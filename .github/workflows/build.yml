@@ -1,0 +1,41 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm clean
+
+      - run: pnpm build
+
+      - name: Verify dist artifacts
+        run: |
+          test -f dist/index.js
+          test -f dist/index.d.ts
+
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: behck-dist
+          path: dist
+          if-no-files-found: error
+          retention-days: 7
