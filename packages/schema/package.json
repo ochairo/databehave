@@ -1,0 +1,69 @@
+{
+  "name": "@databehave/schema",
+  "version": "0.1.0",
+  "description": "Schemas for how data behaves, not just its shape.",
+  "type": "module",
+  "author": "ochairo",
+  "license": "MIT",
+  "homepage": "https://github.com/ochairo/databehave/tree/main/packages/schema#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ochairo/databehave.git",
+    "directory": "packages/schema"
+  },
+  "bugs": {
+    "url": "https://github.com/ochairo/databehave/issues"
+  },
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "import": "./dist/internal.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": ">=20.19"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "pretest": "pnpm build:test",
+    "test": "find dist-test/test -name '*.test.js' -print0 | xargs -0 node --test",
+    "test:watch": "tsc -p tsconfig.test.json --watch & find dist-test/test -name '*.test.js' -print0 | xargs -0 node --test --watch",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf dist dist-test"
+  },
+  "dependencies": {},
+  "peerDependencies": {},
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "25.9.1"
+  },
+  "keywords": [
+    "schema",
+    "data-schema",
+    "mock",
+    "mock-data",
+    "fixture",
+    "generator",
+    "validator",
+    "deterministic",
+    "seeded",
+    "zero-dependency",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
