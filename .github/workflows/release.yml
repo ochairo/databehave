@@ -1,0 +1,71 @@
+# TODO(owner): enable when ready to publish v1.0.0.
+# This workflow is dormant by design. It is `workflow_dispatch`-only and must
+# remain so until the maintainer is ready to publish @databehave/schema and
+# @databehave/server to npm. Do not add `push` or `release` triggers without
+# also configuring NPM_TOKEN, GitHub OIDC, and provenance settings.
+
+name: release
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (no publish)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+  id-token: write # required for npm provenance
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@692973e3d937129bcbf40652eb9f2f61becf3332 # v4.1.7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@fe02b34f77f8bc703788d5817da081398fad5dd2 # v4.0.0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@1e60f620b9541d16bece96c5465dc8ee9832be0b # v4.0.3
+        with:
+          node-version: "20"
+          cache: pnpm
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install (frozen lockfile)
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm -r typecheck
+
+      - name: Build
+        run: pnpm -r build
+
+      - name: Test
+        run: pnpm -r test
+
+      - name: Verify npm package signatures
+        run: npm audit signatures
+
+      - name: Pre-publish clean (drop coverage / dist-test from tarball roots)
+        run: pnpm -r clean || true
+
+      - name: Generate SBOM (CycloneDX)
+        run: |
+          mkdir -p sbom
+          pnpm exec cyclonedx-npm --output-file sbom/databehave.cdx.json --output-format JSON
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: sbom-cyclonedx
+          path: sbom/
+
+      - name: Publish to npm (with provenance)
+        if: ${{ inputs.dry_run == false }}
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: pnpm -r publish --provenance --access public --no-git-checks

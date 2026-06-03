@@ -1,0 +1,81 @@
+{
+  "name": "@databehave/server",
+  "version": "0.1.0",
+  "description": "A JSON file config-driven mock server",
+  "keywords": [
+    "mock",
+    "mock-server",
+    "openapi",
+    "databehave",
+    "testing",
+    "http",
+    "json",
+    "jsonc"
+  ],
+  "license": "MIT",
+  "author": "ochairo",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ochairo/databehave.git",
+    "directory": "packages/server"
+  },
+  "bugs": {
+    "url": "https://github.com/ochairo/databehave/issues"
+  },
+  "homepage": "https://github.com/ochairo/databehave/tree/main/packages/server#readme",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "databehave-server": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "README.md",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "build:admin": "vite build --config vite.admin.config.ts && mv dist/admin/ui-shell.html dist/admin/ui.html",
+    "build": "pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "clean": "rm -rf dist coverage dist-test",
+    "bench": "vitest bench --run",
+    "prepack": "if [ -n \"$PREPACK_SKIP_TESTS\" ]; then echo '[prepack] PREPACK_SKIP_TESTS set — skipping tests'; else pnpm test:no-coverage; fi && pnpm clean && pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "test": "vitest run --coverage",
+    "test:watch": "vitest",
+    "test:no-coverage": "vitest run"
+  },
+  "dependencies": {},
+  "peerDependencies": {
+    "@databehave/schema": "^0.1.0"
+  },
+  "peerDependenciesMeta": {
+    "@databehave/schema": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@databehave/schema": "workspace:*",
+    "@types/node": "^20.14.10",
+    "@vitest/coverage-v8": "1.6.1",
+    "typescript": "^5.4.5",
+    "vite": "^8.0.14",
+    "vitest": "^1.6.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

@@ -1,0 +1,7 @@
+/*
+ * @databehave/server: development placeholder for the admin UI stylesheet.
+ * The real stylesheet is produced by `pnpm run build:admin` and written
+ * to `dist/admin/ui.css`. This stub exists so unit tests that exercise
+ * the `${path}/ui.css` route can read a file from `src/admin/` (where
+ * the runtime resolves it during tests). Do not import this file.
+ */

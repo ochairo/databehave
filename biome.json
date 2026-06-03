@@ -1,0 +1,63 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "vcs": {
+    "enabled": false,
+    "clientKind": "git",
+    "useIgnoreFile": false
+  },
+  "files": {
+    "ignoreUnknown": true,
+    "includes": [
+      "**",
+      "!**/dist/**",
+      "!**/dist-test/**",
+      "!**/coverage/**",
+      "!**/node_modules/**",
+      "!**/etc/**",
+      "!**/*.api.md",
+      "!packages/server/src/admin/ui/**"
+    ]
+  },
+  "formatter": {
+    "enabled": false
+  },
+  "assist": {
+    "enabled": true,
+    "actions": {
+      "source": {
+        "organizeImports": "off"
+      }
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "style": {
+        "noNonNullAssertion": "off",
+        "useTemplate": "off",
+        "useImportType": "off"
+      },
+      "complexity": {
+        "useLiteralKeys": "off",
+        "useOptionalChain": "off"
+      },
+      "suspicious": {
+        "useIterableCallbackReturn": "off",
+        "noThenProperty": "off",
+        "noConfusingVoidType": "off",
+        "useBiomeIgnoreFolder": "off",
+        "noExplicitAny": "off",
+        "noTemplateCurlyInString": "off",
+        "noTsIgnore": "off",
+        "noControlCharactersInRegex": "off",
+        "noAssignInExpressions": "off",
+        "noPrototypeBuiltins": "off"
+      },
+      "correctness": {
+        "noUnusedImports": "off",
+        "noUnusedFunctionParameters": "off"
+      }
+    }
+  }
+}

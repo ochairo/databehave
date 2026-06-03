@@ -1,0 +1,48 @@
+version: 2
+
+updates:
+  # Root workspace npm deps (devDependencies, tooling)
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # @databehave/schema (zero-dep DSL — bumps should be rare and reviewed)
+  - package-ecosystem: npm
+    directory: "/packages/schema"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # @databehave/server
+  - package-ecosystem: npm
+    directory: "/packages/server"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-dependencies:
+        dependency-type: development
+        update-types:
+          - minor
+          - patch
+
+  # GitHub Actions (workflows are SHA-pinned; dependabot will open PRs to bump)
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
