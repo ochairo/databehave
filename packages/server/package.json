@@ -69,7 +69,7 @@
   "devDependencies": {
     "@databehave/schema": "workspace:*",
     "@types/node": "^20.14.10",
-    "@vitest/coverage-v8": "1.6.1",
+    "@vitest/coverage-v8": "4.1.8",
     "typescript": "^5.4.5",
     "vite": "^8.0.14",
     "vitest": "^1.6.0"
