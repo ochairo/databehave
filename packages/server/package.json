@@ -68,7 +68,7 @@
   },
   "devDependencies": {
     "@databehave/schema": "workspace:*",
-    "@types/node": "^20.14.10",
+    "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "1.6.1",
     "typescript": "^5.4.5",
     "vite": "^8.0.14",
