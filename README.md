@@ -30,9 +30,10 @@ npx databehave-server databehave.jsonc
 ```jsonc
 // databehave.jsonc
 {
-  "server":   { "host": "127.0.0.1", "port": 8000 },
-  "openapi":  "./openapi.json",
-  "schema":   { "enabled": true },
+  "server":    { "host": "127.0.0.1", "port": 8000 },
+  "openapi":   "./openapi.json",
+  "schema":    { "enabled": true },
+  "admin":     { "enabled": true },
   "endpoints": {
     // If you need to customize beyond auto generate response, you can add route modules here:
     // E.g. "GET /products/list": "./src/routes/products/list.js"
@@ -42,6 +43,7 @@ npx databehave-server databehave.jsonc
 
 Every path declared in `openapi.json` is now served at `http://127.0.0.1:8000`.
 If you need full control over the generated responses, you can use `@databehave/schema` directly to define custom data generation logic.
+The admin UI at `http://127.0.0.1:8000/databehave` gives you a dashboard to override response data for each API endpoint, with support for saving and sharing override scenarios.
 
 ## Repository layout
 

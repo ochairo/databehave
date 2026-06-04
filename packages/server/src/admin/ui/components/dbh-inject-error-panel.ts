@@ -6,7 +6,7 @@ import { esc } from '../html'
 const MODE_OPTIONS: ModeKind[] = ['http-status', 'business-failure', 'custom-body', 'empty-body', 'malformed-json', 'delay', 'hang', 'destroy']
 
 /**
- * Per-endpoint "inject error" form. Scopes are limited to `exact` and
+ * Per-endpoint "inject response" form. Scopes are limited to `exact` and
  * `path` — the `global` scope was moved out to the dedicated top-bar
  * modal (`<dbh-global-override-panel>`). When a global override is
  * active a small hint surfaces with a "manage from top bar" button.
@@ -81,19 +81,12 @@ export class DbhInjectErrorPanel extends HTMLElement {
     const e = this._existing
     this.innerHTML = `
       <div class="mock-zone">
-        <h4>Inject error</h4>
+        <h4>Inject response</h4>
         ${this._globalActive ? `
           <div class="global-active-hint" role="note">
             <span>A global override is active. Manage it from the top bar.</span>
             <button type="button" class="btn ghost" data-open-global>Open</button>
           </div>` : ''}
-        <div class="row">
-          <label>Scope</label>
-          <div class="radio-group">
-            <label><input type="radio" name="scope" data-scope="exact"${this._scope === 'exact' ? ' checked' : ''}/> Exact (METHOD + this path)</label>
-            <label><input type="radio" name="scope" data-scope="path"${this._scope === 'path' ? ' checked' : ''}/> Path (any method on this path)</label>
-          </div>
-        </div>
         <div class="row">
           <label>Mode</label>
           <select data-mode>${MODE_OPTIONS.map((m) => `<option value="${m}"${m === this._kind ? ' selected' : ''}>${m}</option>`).join('')}</select>
@@ -112,9 +105,6 @@ export class DbhInjectErrorPanel extends HTMLElement {
   }
   private _wire(): void {
     this.querySelector('[data-open-global]')?.addEventListener('click', () => openGlobalOverride())
-    for (const r of this.querySelectorAll<HTMLInputElement>('[data-scope]')) {
-      r.addEventListener('change', () => { if (r.checked) this._scope = (r.dataset.scope as 'exact' | 'path') })
-    }
     const sel = this.querySelector<HTMLSelectElement>('[data-mode]')
     sel?.addEventListener('change', () => {
       this._kind = sel.value as ModeKind
