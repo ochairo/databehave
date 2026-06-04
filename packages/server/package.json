@@ -1,19 +1,12 @@
 {
   "name": "@databehave/server",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "A JSON file config-driven mock server",
-  "keywords": [
-    "mock",
-    "mock-server",
-    "openapi",
-    "databehave",
-    "testing",
-    "http",
-    "json",
-    "jsonc"
-  ],
-  "license": "MIT",
+  "type": "module",
   "author": "ochairo",
+  "license": "MIT",
+  "homepage": "https://github.com/ochairo/databehave/tree/main/packages/server#readme",
+  "readme": "README.md",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/ochairo/databehave.git",
@@ -22,8 +15,18 @@
   "bugs": {
     "url": "https://github.com/ochairo/databehave/issues"
   },
-  "homepage": "https://github.com/ochairo/databehave/tree/main/packages/server#readme",
-  "type": "module",
+  "keywords": [
+    "mock-server",
+    "api-mock",
+    "openapi-mock",
+    "http-mock",
+    "schema-driven",
+    "test-server",
+    "json",
+    "jsonc",
+    "typescript",
+    "databehave"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -37,10 +40,9 @@
   },
   "files": [
     "dist",
-    "docs",
     "README.md",
-    "CHANGELOG.md",
-    "LICENSE"
+    "LICENSE",
+    "CHANGELOG.md"
   ],
   "engines": {
     "node": ">=18"
@@ -48,15 +50,15 @@
   "scripts": {
     "build:admin": "vite build --config vite.admin.config.ts && mv dist/admin/ui-shell.html dist/admin/ui.html",
     "build": "pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
-    "clean": "rm -rf dist coverage dist-test",
-    "bench": "vitest bench --run",
-    "prepack": "if [ -n \"$PREPACK_SKIP_TESTS\" ]; then echo '[prepack] PREPACK_SKIP_TESTS set — skipping tests'; else pnpm test:no-coverage; fi && pnpm clean && pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
-    "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test",
-    "pretypecheck": "pnpm --filter @databehave/schema build",
     "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
-    "test:no-coverage": "vitest run"
+    "test:no-coverage": "vitest run",
+    "bench": "vitest bench --run",
+    "clean": "rm -rf dist coverage dist-test",
+    "prepack": "if [ -n \"$PREPACK_SKIP_TESTS\" ]; then echo '[prepack] PREPACK_SKIP_TESTS set — skipping tests'; else pnpm test:no-coverage; fi && pnpm clean && pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test",
+    "pretypecheck": "pnpm --filter @databehave/schema build"
   },
   "dependencies": {},
   "peerDependencies": {
