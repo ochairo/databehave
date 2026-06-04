@@ -57,7 +57,9 @@ export class DbhActiveOverridesPanel extends HTMLElement {
         const key = opKey(o.matcher.method, o.matcher.path)
         appStore.set({ expandedKey: key, focusedKey: key, rightPanelOpen: false })
         setTimeout(() => {
-          const target = document.querySelector(`[data-key="${key.replace(/"/g, '\\"')}"]`)
+          const target = Array
+            .from(document.querySelectorAll<HTMLElement>('[data-key]'))
+            .find((node) => node.getAttribute('data-key') === key)
           if (target && 'scrollIntoView' in target) (target as HTMLElement).scrollIntoView({ behavior: 'smooth', block: 'center' })
         }, 50)
       })

@@ -261,7 +261,7 @@ describe('createServer (dynamic routes)', () => {
     expect(m.status).toBe(500)
     const body = (await m.json()) as { error: string; message: string }
     expect(body.error).toBe('internal_error')
-    expect(body.message).toMatch(/body variant missing/)
+    expect(body.message).toBe('Internal server error')
   })
 
   it('auto-serves HEAD by running the GET handler and stripping the body (RFC 7231)', async () => {
@@ -392,7 +392,7 @@ describe('hooks.onError', () => {
     })
     const res = await server.fetch(new Request('http://localhost/api/v1/boom'))
     expect(res.status).toBe(500)
-    expect(await res.json()).toEqual({ error: 'internal_error', message: 'kaboom' })
+    expect(await res.json()).toEqual({ error: 'internal_error', message: 'Internal server error' })
   })
 })
 
@@ -452,6 +452,24 @@ describe('createServer.listen', () => {
       body: JSON.stringify({ value: 21 }),
     })
     expect(await res.json()).toEqual({ received: 42 })
+  })
+
+  it('returns a generic 500 envelope for thrown handler errors over HTTP', async () => {
+    const server = createServer({
+      routes: {
+        'GET /api/v1/boom': () => {
+          throw new Error('kaboom-internal-detail')
+        },
+      },
+    })
+    handle = await server.listen({ port: 0 })
+
+    const res = await fetch(`http://127.0.0.1:${handle.port}/api/v1/boom`)
+    expect(res.status).toBe(500)
+    expect(await res.json()).toEqual({
+      error: 'internal_error',
+      message: 'Internal server error',
+    })
   })
 
   it('close() releases the port', async () => {

@@ -494,7 +494,7 @@ export const createServer = (config: Config): Server => {
             status: 500,
             json: {
               error: 'internal_error',
-              message: errMsg,
+              message: 'Internal server error',
             },
           } satisfies MockResponse)
       return finalize(buildResponse(decorateWithCors(errRes, probe)), errMsg)
@@ -575,12 +575,14 @@ export const createServer = (config: Config): Server => {
             }
             return
           }
+          // Keep diagnostics on the server side; never leak internals to clients.
+          // eslint-disable-next-line no-console
+          console.error('[@databehave/server] request handling error:', err)
           if (!res.headersSent) {
             res.statusCode = 500
             res.setHeader('content-type', 'application/json')
           }
-          const message = err instanceof Error ? err.message : String(err)
-          res.end(JSON.stringify({ error: 'internal_error', message }))
+          res.end(JSON.stringify({ error: 'internal_error', message: 'Internal server error' }))
         })
     })
 

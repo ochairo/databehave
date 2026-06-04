@@ -1,6 +1,6 @@
 {
   "name": "@databehave/schema",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Schemas for how data behaves, not just its shape.",
   "type": "module",
   "author": "ochairo",

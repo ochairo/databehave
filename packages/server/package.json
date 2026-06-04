@@ -1,6 +1,6 @@
 {
   "name": "@databehave/server",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "A JSON file config-driven mock server",
   "type": "module",
   "author": "ochairo",
