@@ -34,8 +34,8 @@ export default defineConfig({
       },
     },
     target: 'es2020',
-    // vite 8 + rolldown 1 deprecated the esbuild transpile plugin; switch to oxc.
-    minify: 'oxc',
+    // Keep an explicit Vite 6-compatible minifier for Node 18 support.
+    minify: 'esbuild',
     sourcemap: false,
   },
 })

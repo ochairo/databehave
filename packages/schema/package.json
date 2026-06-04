@@ -1,6 +1,6 @@
 {
   "name": "@databehave/schema",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Schemas for how data behaves, not just its shape.",
   "type": "module",
   "author": "ochairo",
@@ -32,7 +32,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=18"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",

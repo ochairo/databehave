@@ -8,7 +8,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@databehave/server.svg)](https://www.npmjs.com/package/@databehave/server)
 [![CI](https://github.com/ochairo/databehave/actions/workflows/ci.yml/badge.svg)](https://github.com/ochairo/databehave/actions/workflows/ci.yml)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A520.19-brightgreen)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-%E2%89%A518.17-brightgreen)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 </div>

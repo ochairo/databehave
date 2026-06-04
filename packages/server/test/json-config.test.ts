@@ -1,5 +1,4 @@
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync } from 'node:fs'
-import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
@@ -30,7 +29,7 @@ const MIN_OAS = JSON.stringify({
 })
 
 beforeEach(() => {
-  dir = mkdtempSync(join(tmpdir(), 'databehave-server-cfg-'))
+  dir = mkdtempSync(join(process.cwd(), '.databehave-server-cfg-'))
 })
 
 afterEach(() => {

@@ -93,14 +93,31 @@ describeCli('cli exit codes', () => {
       const child = spawn('node', [cliPath, configPath], {
         stdio: ['ignore', 'pipe', 'pipe'],
       })
+      const stdoutChunks: string[] = []
       const stderrChunks: string[] = []
+      child.stdout.on('data', (b) => stdoutChunks.push(String(b)))
       child.stderr.on('data', (b) => stderrChunks.push(String(b)))
 
       const exit = new Promise<number | null>((resolve) => {
         child.on('exit', (code) => resolve(code))
       })
 
-      await new Promise((r) => setTimeout(r, 500))
+      const started = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `server did not report startup:\n${stdoutChunks.join('')}\n${stderrChunks.join('')}`,
+            ),
+          )
+        }, 5_000)
+        child.stdout.on('data', () => {
+          if (stdoutChunks.join('').includes('listening on')) {
+            clearTimeout(timeout)
+            resolve()
+          }
+        })
+      })
+      await started
       child.kill('SIGINT')
       const code = await exit
       expect(code, stderrChunks.join('')).toBe(0)
@@ -122,14 +139,31 @@ describeCli('cli exit codes', () => {
       const child = spawn('node', [cliPath, configPath], {
         stdio: ['ignore', 'pipe', 'pipe'],
       })
+      const stdoutChunks: string[] = []
       const stderrChunks: string[] = []
+      child.stdout.on('data', (b) => stdoutChunks.push(String(b)))
       child.stderr.on('data', (b) => stderrChunks.push(String(b)))
 
       const exit = new Promise<number | null>((resolve) => {
         child.on('exit', (code) => resolve(code))
       })
 
-      await new Promise((r) => setTimeout(r, 500))
+      const started = new Promise<void>((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              `server did not report startup:\n${stdoutChunks.join('')}\n${stderrChunks.join('')}`,
+            ),
+          )
+        }, 5_000)
+        child.stdout.on('data', () => {
+          if (stdoutChunks.join('').includes('listening on')) {
+            clearTimeout(timeout)
+            resolve()
+          }
+        })
+      })
+      await started
       child.kill('SIGINT')
       const code = await exit
       expect(code, stderrChunks.join('')).toBe(0)

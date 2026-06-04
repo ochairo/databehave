@@ -1,6 +1,6 @@
 {
   "name": "@databehave/server",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "A JSON file config-driven mock server",
   "keywords": [
     "mock",
@@ -43,7 +43,7 @@
     "LICENSE"
   ],
   "engines": {
-    "node": ">=20.19"
+    "node": ">=18"
   },
   "scripts": {
     "build:admin": "vite build --config vite.admin.config.ts && mv dist/admin/ui-shell.html dist/admin/ui.html",
@@ -60,7 +60,7 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@databehave/schema": "^0.1.0"
+    "@databehave/schema": "^0.1.1"
   },
   "peerDependenciesMeta": {
     "@databehave/schema": {
@@ -70,10 +70,10 @@
   "devDependencies": {
     "@databehave/schema": "workspace:*",
     "@types/node": "^25.9.1",
-    "@vitest/coverage-v8": "4.1.8",
+    "@vitest/coverage-v8": "3.2.6",
     "typescript": "^6.0.3",
-    "vite": "^8.0.14",
-    "vitest": "^4.1.8"
+    "vite": "^6.4.3",
+    "vitest": "^3.2.6"
   },
   "publishConfig": {
     "access": "public",

@@ -310,7 +310,7 @@ const importHandler = async (
   //    sibling fallback for TS-loader environments (tsx, ts-node).
   const absolute = resolvePath(baseDir, modulePath)
   const url = await resolveHandlerUrl(absolute)
-  const mod = (await import(url)) as { default?: unknown }
+  const mod = (await import(/* @vite-ignore */ url)) as { default?: unknown }
   const handler = mod.default
   if (typeof handler !== 'function') {
     throw new Error(
