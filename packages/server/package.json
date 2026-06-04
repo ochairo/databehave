@@ -1,6 +1,6 @@
 {
   "name": "@databehave/server",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "description": "A JSON file config-driven mock server",
   "type": "module",
   "author": "ochairo",
@@ -56,7 +56,7 @@
     "test:no-coverage": "vitest run",
     "bench": "vitest bench --run",
     "clean": "rm -rf dist coverage dist-test",
-    "prepack": "if [ -n \"$PREPACK_SKIP_TESTS\" ]; then echo '[prepack] PREPACK_SKIP_TESTS set — skipping tests'; else pnpm test:no-coverage; fi && pnpm clean && pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "prepack": "pnpm clean && pnpm build",
     "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test",
     "pretypecheck": "pnpm --filter @databehave/schema build"
   },
