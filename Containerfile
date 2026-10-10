@@ -1,4 +1,4 @@
-FROM docker.io/library/node:24-bookworm-slim@sha256:ba6b7d0ee561d9d49deb99e2b93c98632cc287b6cca1a6b18d66127054efa4dc
+FROM docker.io/library/node:25-bookworm-slim@sha256:81db02c4b671288a03915da9534dbd54f96d0e7c24d80ccc54f5b36b2e684370
 
 ENV PLAYWRIGHT_BROWSERS_PATH=/opt/playwright-browsers
 COPY scripts/install-actionlint.mjs /tmp/install-actionlint.mjs
