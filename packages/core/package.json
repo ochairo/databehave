@@ -35,7 +35,7 @@
     "clean": "rm -rf dist dist-test"
   },
   "devDependencies": {
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "@types/node": "25.9.1"
   },
   "publishConfig": {
