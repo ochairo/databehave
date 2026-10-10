@@ -41,7 +41,7 @@ jobs:
       - run: pnpm test:tooling
 
   quality:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     outputs:
       artifact-id: ${{ steps.bundle.outputs.artifact-id }}
@@ -67,6 +67,24 @@ jobs:
           echo "$RUNNER_TEMP/actionlint" >> "$GITHUB_PATH"
       - run: pnpm workflow:check
       - run: pnpm exec playwright install --with-deps chromium
+      - name: Allow sandboxed Playwright Chromium
+        shell: bash
+        run: |
+          shopt -s nullglob
+          browsers=("$HOME"/.cache/ms-playwright/chromium_headless_shell-*/chrome-headless-shell-linux64/chrome-headless-shell)
+          if [[ ${#browsers[@]} -ne 1 || ! -x "${browsers[0]}" ]]; then
+            echo "Expected exactly one installed Chromium headless executable" >&2
+            exit 1
+          fi
+          # Ubuntu 24.04 restricts user namespaces for downloaded browsers.
+          sudo tee /etc/apparmor.d/databehave-playwright >/dev/null <<EOF
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile databehave-playwright "${browsers[0]}" flags=(unconfined) {
+            userns,
+          }
+          EOF
+          sudo apparmor_parser -r /etc/apparmor.d/databehave-playwright
       - run: pnpm test:e2e
       - name: Retain synthetic browser failure evidence
         if: failure()
