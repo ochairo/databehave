@@ -85,3 +85,11 @@ export {
   type Issue,
   type IssueCode,
 } from './foundation/errors.js'
+
+// Instance-local schema composition and extension contracts.
+export { createSchemaRuntime, IR_VERSION, type SchemaRuntime, type SchemaRuntimeOptions, type SchemaContract, type SchemaEnvelope, type SchemaVisitor, type WalkPath, type RuntimeReplay } from './runtime/runtime.js'
+export { defineKind, defineBehavior, type KindDescriptor, type KindDefinition, type TypedKind, type BehaviorDescriptor, type BehaviorDefinition, type TypedBehavior, type BehaviorPhase, type SchemaChild, type GenerationContext, type GenerationNext, type SamplingContext, type ValidationContext } from './runtime/contracts.js'
+export { standardKinds } from './standard/kinds.js'
+export { standardBehaviors } from './standard/behaviors.js'
+export { standardRuntime } from './standard/runtime.js'
+export type { StandardSchemaNode } from './foundation/ir.js'

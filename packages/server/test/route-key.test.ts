@@ -15,6 +15,8 @@ describe('parseRouteKey', () => {
       ['PUT /a', 'put'],
       ['DELETE /a', 'delete'],
       ['PATCH /a', 'patch'],
+      ['HEAD /a', 'head'],
+      ['OPTIONS /a', 'options'],
     ]
     for (const [key, method] of cases) {
       expect(parseRouteKey(key)).toEqual({ method, path: '/a' })
@@ -33,7 +35,7 @@ describe('parseRouteKey', () => {
   })
 
   it('throws on unsupported method', () => {
-    expect(() => parseRouteKey('OPTIONS /api' as RouteKey)).toThrow(/unsupported method/)
+    expect(() => parseRouteKey('TRACE /api' as RouteKey)).toThrow(/unsupported method/)
   })
 
   it('throws when path does not start with /', () => {

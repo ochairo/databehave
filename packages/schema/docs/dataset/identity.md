@@ -8,11 +8,13 @@ page documents the helper that turns a row into that key string and
 the resolution rules that govern it.
 
 Source:
-[`src/dataset/dataset.ts`](../../src/dataset/dataset.ts) (`identityFor`,
+[`src/dataset/generate.ts`](../../src/dataset/generate.ts) (`identityFor`,
 `identityKey` from
 [`src/foundation/hash.ts`](../../src/foundation/hash.ts)).
 
 ---
+
+<a id="identityfor"></a>
 
 ## `identityFor(name, identity, row)`
 
@@ -64,7 +66,7 @@ as follows:
 | --- | --- | --- |
 | `undefined` | the literal token `__undef__` | Distinguishes "field missing" from a real value. |
 | `null` | the literal token `__null__` | Distinguishes "explicit null" from `undefined`. |
-| any other value | `JSON.stringify(value)` | Stable across processes; numbers, strings, booleans, nested objects all round-trip to the same bytes. |
+| any other value | `JSON.stringify(value)` | Deterministic for the same JSON value and property order; object keys are not canonicalized. |
 
 ```ts
 identityFor('t', ['k'], { k: undefined }) !== identityFor('t', ['k'], { k: null })

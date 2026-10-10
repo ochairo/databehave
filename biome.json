@@ -15,7 +15,10 @@
       "!**/node_modules/**",
       "!**/etc/**",
       "!**/*.api.md",
-      "!packages/server/src/admin/ui/**"
+      "!packages/admin/src/ui/**",
+      "!packages/admin/assets/**",
+      "!**/playwright-report/**",
+      "!**/test-results/**"
     ]
   },
   "formatter": {

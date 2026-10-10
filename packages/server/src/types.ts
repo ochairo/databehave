@@ -1,24 +1,16 @@
 /**
  * Public types for @databehave/server.
  *
- * Everything a consumer needs to type a config and a handler is exported
+ * Request, response, handler and common HTTP option types are exported
  * from here. Internal types (route table, dispatch result, etc.) stay
  * inside their respective modules.
  */
 
-/** HTTP methods @databehave/server dispatches on. */
-export type Method = 'get' | 'post' | 'put' | 'delete' | 'patch'
+/** HTTP methods dispatched by the server. */
+export type Method = 'get' | 'post' | 'put' | 'delete' | 'patch' | 'head' | 'options'
 
-/**
- * HTTP methods that may appear on a {@link MockRequest} but
- * never on a route key. `options` is handled by the CORS preflight
- * pipeline; `head` is allowed through but is never matched by a
- * route (returns 404 by default).
- */
-export type ObservedMethod =
-  | Method
-  | 'options'
-  | 'head'
+/** Methods observed on incoming requests, including HEAD and OPTIONS. */
+export type ObservedMethod = Method
 
 /**
  * Config key shape: `'METHOD /absolute-path'`.
@@ -38,6 +30,10 @@ export type RouteKey = `${Uppercase<Method>} /${string}`
  */
 export interface MockRequest {
   readonly method: ObservedMethod
+  /** Resolved handler method; HEAD may use GET while method remains head. */
+  readonly effectiveMethod: ObservedMethod
+  /** Aborted on caller disconnect or host shutdown. */
+  readonly signal: AbortSignal
   /** Full URL as received. */
   readonly url: string
   /** Pathname only, e.g. `/api/v1/foo`. */
@@ -94,142 +90,6 @@ export type MockResponse = MockResponseBody & {
 export type Handler =
   (req: MockRequest) => MockResponse | Promise<MockResponse>
 
-/**
- * Top-level config consumed by `createServer`.
- *
- * Hand-written `routes` always win over OAS-derived ones — duplicate keys
- * raise an error at construction time only when both are hand-written.
- */
-export interface Config {
-  /** Hand-written handlers. Keyed by `'METHOD /path'` or `'METHOD /a/:id'`. */
-  routes?: Partial<Record<RouteKey, Handler>>
-  /**
-   * Raw OpenAPI document as JSON text. When present, @databehave/server
-   * generates a handler for every `paths.*.<method>` not already
-   * declared in `routes`. Set to `undefined` (the default) to disable.
-   */
-  openapi?: string
-  /**
-   * Reporter for OpenAPI walker failures. Walker errors are
-   * recoverable — the offending route falls back to a small stub —
-   * but consumers usually want to log them so the OAS gap is fixed.
-   */
-  onOpenApiWalkError?: (
-    method: Method,
-    routePath: string,
-    err: unknown,
-  ) => void
-  /**
-   * Reporter for OAS responses declared with an empty / permissive
-   * schema (`schema: {}`). Per JSON Schema this matches any value,
-   * so @databehave/server still serves a deterministic stub — but consumers
-   * usually want to surface it so the spec gets filled in.
-   */
-  onOpenApiEmptySchema?: (
-    method: Method,
-    routePath: string,
-    status: number,
-  ) => void
-  /**
-   * Per-request lifecycle hooks.
-   *
-   * - `onRequest`     — runs before route dispatch. Returning a
-   *                     `MockResponse` short-circuits the handler
-   *                     (use for auth / kill-switch / mock-mode).
-   * - `onResponse`    — runs after the handler. Returning a new
-   *                     `MockResponse` replaces it (use to inject
-   *                     headers like `x-mock-mode`).
-   * - `onError`       — invoked on any thrown handler error. Returning
-   *                     a `MockResponse` replaces the default 500.
-   * - `onServerError` — invoked on a runtime `http.Server` `'error'`
-   *                     event after a successful bind (EMFILE, accept
-   *                     failures, etc.). When absent, errors are logged
-   *                     via `console.error`. Provide a handler to forward
-   *                     them to your structured logger or metrics pipe.
-   */
-  hooks?: {
-    onRequest?: (
-      req: MockRequest,
-    ) => MockResponse | void | Promise<MockResponse | void>
-    onResponse?: (
-      req: MockRequest,
-      res: MockResponse,
-    ) => MockResponse | void | Promise<MockResponse | void>
-    onError?: (
-      req: MockRequest,
-      err: unknown,
-    ) => MockResponse | Promise<MockResponse>
-    onServerError?: (err: Error) => void
-  }
-  /**
-   * CORS settings. When provided, @databehave/server:
-   * - reflects `Access-Control-Allow-Origin` from `origin()`
-   * - handles `OPTIONS` preflight requests for every declared route
-   * - exposes the listed headers via `Access-Control-Expose-Headers`
-   */
-  cors?: CorsConfig
-  /**
-   * Opt-in admin / error-injection panel. Default: disabled. See
-   * `AdminModeConfig` and the `Admin mode` section in
-   * the README. Existing consumers see zero behavior change.
-   */
-  admin?: import('./admin/admin-types.js').AdminModeConfig
-  /**
-   * Opt-in per-request access logs (method, path, status, duration).
-   * Default: disabled — no stdout output, no per-request overhead.
-   *
-   * - `false` (default) — silent.
-   * - `true` — shorthand for `{ access: true }` with default knobs.
-   * - object — see {@link LogConfig}.
-   *
-   * Lines are written to **stdout**. The admin enable banner also
-   * writes to stdout via `console.info`; stderr carries only runtime
-   * warnings and errors. See the `Access logs` README section.
-   */
-  log?: LogConfig
-  /**
-   * Opt-in inbound request validation against the OpenAPI document.
-   * Default: disabled — `server.fetch(Request)` is byte-identical to
-   * the no-validation behaviour when `validation` is omitted or
-   * `validation.request !== true`.
-   */
-  validation?: {
-    /** Master switch for inbound request validation. Default `false`. */
-    request?: boolean
-    /**
-     * Hard cap on the JSON request body size (UTF-8 bytes) before
-     * `JSON.parse` runs. A request whose body exceeds this is rejected
-     * with `413 Payload Too Large` (RFC 7807 problem+json). Default
-     * `102400` (100 KB) — matches express's body-parser default. Raise
-     * only if the OpenAPI document genuinely declares large request
-     * bodies.
-     */
-    maxBodyBytes?: number
-  }
-}
-
-/**
- * Per-request access-log configuration. See `Config.log`.
- *
- * - `access` — enable the one-line-per-request access log. Default `true`
- *   when an object is supplied.
- * - `includeAdmin` — when `true`, log admin-panel requests too. Default
- *   `false` so dev consoles aren't flooded by UI traffic.
- * - `colors` — `'auto'` (detect `process.stdout.isTTY`), `'always'`, or
- *   `'never'`. Default `'auto'`. Has no effect on the `json` format.
- * - `format` — `'pretty'` (default, ANSI-coloured one-liner) or `'json'`
- *   (newline-terminated JSON object, suitable for log shippers).
- */
-export type LogConfig =
-  | false
-  | true
-  | {
-      access?: boolean
-      includeAdmin?: boolean
-      colors?: 'auto' | 'always' | 'never'
-      format?: 'pretty' | 'json'
-    }
-
 /** CORS knobs. All fields are optional. */
 export interface CorsConfig {
   /**
@@ -242,43 +102,10 @@ export interface CorsConfig {
   credentials?: boolean
   /** Headers exposed to the browser via `Access-Control-Expose-Headers`. */
   exposeHeaders?: readonly string[]
-  /** Methods accepted on preflight. Defaults to `['GET','POST','PUT','DELETE','PATCH','OPTIONS']`. */
+  /** Methods accepted on preflight. Defaults to `['GET','POST','PUT','DELETE','PATCH','HEAD','OPTIONS']`. */
   allowMethods?: readonly string[]
   /** Headers accepted on preflight. Defaults to `['content-type','authorization']`. */
   allowHeaders?: readonly string[]
   /** Cache-time for preflight in seconds. Defaults to `86400`. */
   maxAge?: number
-}
-
-/** Options for `Server.listen`. */
-export interface ListenOptions {
-  /**
-   * Port to bind. Use `0` (the default) to ask the OS for a free
-   * port — the actual port is returned in the handle.
-   */
-  port?: number
-  /** Host to bind. Defaults to `127.0.0.1`. */
-  host?: string
-}
-
-/** Handle returned from a successful `listen()`. */
-export interface ListenHandle {
-  /** Actual port the server is bound to. */
-  readonly port: number
-  /** Actual host the server is bound to. */
-  readonly host: string
-  /** Stop the server. Resolves when every socket is closed. */
-  close(): Promise<void>
-}
-
-/**
- * Server facade. Pure `fetch(Request) → Response` for tests, plus a
- * Node HTTP `listen()` for dev / e2e usage. The underlying HTTP
- * runtime is an implementation detail and never leaks to consumers.
- */
-export interface Server {
-  /** Process a single Request → Response. Pure, no socket. */
-  fetch(req: globalThis.Request): Promise<globalThis.Response>
-  /** Start a Node HTTP server bound to the given port/host. */
-  listen(opts?: ListenOptions): Promise<ListenHandle>
 }

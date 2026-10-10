@@ -8,7 +8,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@databehave/schema.svg)](https://www.npmjs.com/package/@databehave/schema)
 [![CI](https://github.com/ochairo/databehave/actions/workflows/ci.yml/badge.svg)](https://github.com/ochairo/databehave/actions/workflows/ci.yml)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)](https://nodejs.org/)
+[![Node.js](https://img.shields.io/badge/node-24%20%7C%2026-brightgreen)](https://nodejs.org/)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
 </div>
@@ -16,6 +16,9 @@
 Most schema libraries describe what shape your data has. @databehave/schema describes how data behaves. It has a rich vocabulary for distributions, domains, derived fields, invariants, exceptions, and relations. It also has a determinism model that keeps data consistent across requests and code changes.
 
 ## Install
+
+The upcoming release requires Node.js 24 or 26; supported majors are 24 and 26.
+See the [workspace documentation](../../docs/index.md) and [runnable schema example](../../examples/schema.mjs).
 
 ```sh
 npm install @databehave/schema
@@ -108,3 +111,11 @@ const Tier = enum_(['A', 'B', 'C']).weighted([['A', 0.7], ['B', 0.2], ['C', 0.1]
 © 2026-present ochairo. See [LICENSE](LICENSE)
 
 </div>
+
+### Composable schema runtime
+
+Use `createSchemaRuntime({ kinds, behaviors })` for explicit plugin composition. The `standardKinds` and
+`standardBehaviors` groups use the same public descriptors as external kinds and behaviors. Runtime operations,
+including nested generation, validation, traversal, datasets, replay and versioned serialization, retain the selected
+registry. See [schema plugins](docs/extending.md) for authoring and migration details. The standalone runtime needs no
+application host or HTTP transport.

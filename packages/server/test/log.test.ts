@@ -1,27 +1,18 @@
-/**
- * Tests for opt-in per-request access logs (top-level `log` config).
- *
- * Each test spies on `process.stdout.write` so we capture only what
- * the logger emits. All assertions go through stdout; stderr carries
- * only runtime warnings and is not asserted here.
- */
+/** Characterize the live access-log plugin through the public HTTP pipeline. */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-
-import { createServer } from '../src/index.js'
-import type { Config } from '../src/index.js'
+import { accessLogPlugin, terminateTransport, type AccessLogOptions } from '../src/index.js'
+import { createHttpFixture } from './support/http-fixture.js'
 
 const ANSI_RE = /\x1b\[[0-9;]*m/
-
-const mkServer = (overrides: Partial<Config> = {}) =>
-  createServer({
-    routes: {
-      'GET /api/v1/ping': () => ({ json: { ok: true } }),
-      'GET /api/v1/boom': () => {
-        throw new Error('handler-boom')
-      },
-    },
-    ...overrides,
-  })
+const mkServer = (log?: AccessLogOptions) => createHttpFixture({
+  routes: {
+    'GET /api/v1/ping': () => ({ json: { ok: true } }),
+    'GET /api/v1/boom': () => { throw new Error('handler-boom') },
+    'GET /api/v1/terminate': () => terminateTransport('fault'),
+    'GET /admin/overrides': () => ({ json: [] }),
+  },
+  plugins: log ? [accessLogPlugin(log)] : [],
+})
 
 const captureStdout = () => {
   const lines: string[] = []
@@ -38,7 +29,7 @@ afterEach(() => {
   vi.restoreAllMocks()
 })
 
-describe('access log: log === false (default)', () => {
+describe('access log: plugin absent', () => {
   it('emits nothing across multiple requests', async () => {
     const server = mkServer()
     const { lines } = captureStdout()
@@ -49,9 +40,9 @@ describe('access log: log === false (default)', () => {
   })
 })
 
-describe('access log: log === true', () => {
+describe('access log: plugin defaults', () => {
   it('emits one line per request with method/path/status/ms', async () => {
-    const server = mkServer({ log: true })
+    const server = mkServer({})
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/ping'))
     await server.fetch(new Request('http://localhost/api/v1/ping'))
@@ -64,38 +55,30 @@ describe('access log: log === true', () => {
   })
 })
 
-describe('access log: includeAdmin', () => {
-  it('suppresses admin paths by default', async () => {
-    const server = mkServer({
-      log: true,
-      admin: { enabled: true, path: '/admin' },
-    })
+describe('access log: caller-owned filtering', () => {
+  it('suppresses paths selected by the configured filter', async () => {
+    const server = mkServer({ colors: 'never', filter: ({ request }) => !request.path.startsWith('/admin/') })
     const { lines } = captureStdout()
-    // Admin REST endpoint.
     await server.fetch(new Request('http://localhost/admin/overrides'))
     await server.fetch(new Request('http://localhost/api/v1/ping'))
-    const stripped = lines.map((l) => l.replace(/\x1b\[[0-9;]*m/g, ''))
-    expect(stripped).toHaveLength(1)
-    expect(stripped[0]).toMatch(/\/api\/v1\/ping/)
+    expect(lines).toHaveLength(1)
+    expect(lines[0]).toContain('/api/v1/ping')
   })
 
-  it('logs admin paths when includeAdmin: true', async () => {
-    const server = mkServer({
-      log: { includeAdmin: true, colors: 'never' },
-      admin: { enabled: true, path: '/admin' },
-    })
+  it('observes every path when no filter is configured', async () => {
+    const server = mkServer({ colors: 'never' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/admin/overrides'))
     await server.fetch(new Request('http://localhost/api/v1/ping'))
     expect(lines).toHaveLength(2)
-    expect(lines[0]).toMatch(/\/admin\/overrides/)
-    expect(lines[1]).toMatch(/\/api\/v1\/ping/)
+    expect(lines[0]).toContain('/admin/overrides')
+    expect(lines[1]).toContain('/api/v1/ping')
   })
 })
 
 describe('access log: format json', () => {
   it('emits a newline-terminated JSON object per request', async () => {
-    const server = mkServer({ log: { format: 'json' } })
+    const server = mkServer({ format: 'json' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/ping'))
     expect(lines).toHaveLength(1)
@@ -112,7 +95,7 @@ describe('access log: format json', () => {
   })
 
   it('includes "error" when the handler throws', async () => {
-    const server = mkServer({ log: { format: 'json' } })
+    const server = mkServer({ format: 'json' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/boom'))
     const parsed = JSON.parse(lines[0]!) as Record<string, unknown>
@@ -121,58 +104,42 @@ describe('access log: format json', () => {
   })
 })
 
-describe('access log: sticky override marker', () => {
-  it('appends override:<kind> when an admin override applies', async () => {
-    const server = mkServer({
-      log: { colors: 'never' },
-      admin: { enabled: true, path: '/admin' },
-    })
+describe('access log: terminal outcomes and output', () => {
+  it('logs termination without fabricating an HTTP status', async () => {
+    const server = mkServer({ format: 'json' })
     const { lines } = captureStdout()
-    await server.fetch(
-      new Request('http://localhost/api/v1/ping', {
-        headers: { 'x-mock-status': '500' },
-      }),
-    )
+    await expect(server.fetch(new Request('http://localhost/api/v1/terminate'))).rejects.toThrow('unsupported by fetch')
     expect(lines).toHaveLength(1)
-    expect(lines[0]).toMatch(/→ 500 .* \[override:http-status\]\n$/)
+    expect(JSON.parse(lines[0] ?? '')).toMatchObject({ status: 'terminated', error: 'fault' })
   })
 
-  it('json format emits {"override":"<kind>"}', async () => {
-    const server = mkServer({
-      log: { format: 'json' },
-      admin: { enabled: true, path: '/admin' },
-    })
-    const { lines } = captureStdout()
-    await server.fetch(
-      new Request('http://localhost/api/v1/ping', {
-        headers: { 'x-mock-status': '418' },
-      }),
-    )
-    const parsed = JSON.parse(lines[0]!) as Record<string, unknown>
-    expect(parsed.status).toBe(418)
-    expect(parsed.override).toBe('http-status')
+  it('keeps the response intact when the configured writer fails', async () => {
+    const server = mkServer({ write: () => { throw new Error('output failed') } })
+    const response = await server.fetch(new Request('http://localhost/api/v1/ping'))
+    expect(response.status).toBe(200)
+    expect(await response.json()).toEqual({ ok: true })
   })
 })
 
 describe('access log: colors', () => {
   it('omits ANSI escapes when colors: "never"', async () => {
-    const server = mkServer({ log: { colors: 'never' } })
+    const server = mkServer({ colors: 'never' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/ping'))
     expect(lines[0]).not.toMatch(ANSI_RE)
   })
 
   it('emits ANSI escapes when colors: "always"', async () => {
-    const server = mkServer({ log: { colors: 'always' } })
+    const server = mkServer({ colors: 'always' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/ping'))
     expect(lines[0]).toMatch(ANSI_RE)
   })
 })
 
-describe('access log: HEAD recursion', () => {
+describe('access log: HEAD fallback', () => {
   it('emits exactly one line for an unmodelled HEAD request', async () => {
-    const server = mkServer({ log: { colors: 'never' } })
+    const server = mkServer({ colors: 'never' })
     const { lines } = captureStdout()
     await server.fetch(new Request('http://localhost/api/v1/ping', { method: 'HEAD' }))
     expect(lines).toHaveLength(1)

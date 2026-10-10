@@ -28,24 +28,25 @@ Source:
 
 | Class | Purpose | Throw sites | Reference |
 | --- | --- | --- | --- |
-| [`DataBehaveError`](./foundation/types.md#databehaveerror) | Abstract root. Subclasses carry `path` (JSON-pointer) and optional `hint`. | n/a (abstract — never thrown directly). | [`src/foundation/errors.ts:24-37`](../src/foundation/errors.ts) |
+| [`DataBehaveError`](./foundation/types.md#databehaveerror) | Abstract root. Subclasses carry `path` (an array of string/number segments) and optional `hint`. | n/a (abstract — never thrown directly). | [`src/foundation/errors.ts:24-37`](../src/foundation/errors.ts) |
 | [`ConformError`](./foundation/types.md#conformerror) | Validator rejected a value. Carries `issues: readonly Issue[]`; the error's own `path` is always `[]` because each issue carries its own. | [`parse(schema, value)`](./validator/api.md#parseschema-value) | [`src/foundation/errors.ts:39-58`](../src/foundation/errors.ts) |
-| [`SchemaConflictError`](./foundation/types.md#schemaconflicterror) | Schema is unsatisfiable or misused. Build-time on capability-matrix violations; runtime on impossible bounds, exhausted invariants, out-of-domain derived values, exhausted dataset collision retries. | builder constructors (e.g. `obj({...}).weighted(...)`); [`mock()`](./generator/sampling.md#mock); [`mockDataset()`](./dataset/mock-dataset.md#collisions) | [`src/foundation/errors.ts:60-78`](../src/foundation/errors.ts) |
+| [`SchemaConflictError`](./foundation/types.md#schemaconflicterror) | Schema is unsatisfiable or misused. Build-time on capability-matrix violations; runtime on impossible bounds, exhausted invariants or exhausted dataset collision retries. | builder constructors (e.g. `obj({...}).weighted(...)`); [`mock()`](./generator/sampling.md#mock); [`mockDataset()`](./dataset/mock-dataset.md#collisions) | [`src/foundation/errors.ts`](../src/foundation/errors.ts) |
 
 ## Supporting types
 
 | Type | Purpose | Reference |
 | --- | --- | --- |
-| [`Issue`](./foundation/types.md#issue) | One conformance failure: `{ path, code, message, expected?, received? }`. `code` (stable; closed `IssueCode` catalog) and `path` are part of the SemVer contract; `message` is diagnostic-only and may change in any release. Populated by the validator and carried on `ConformError.issues`. | [`src/foundation/errors.ts`](../src/foundation/errors.ts) |
+| [`Issue`](./foundation/types.md#issue) | One conformance failure: `{ path, code, message, expected?, received? }`. Standard codes are stable; `IssueCode` also accepts plugin-defined strings. Match `code` and `path`; `message` is diagnostic-only. | [`src/foundation/errors.ts`](../src/foundation/errors.ts) |
 | [`SafeParseResult<T>`](./validator/api.md#safeparseresultt) | Discriminated alternative to throwing — `{ ok: true, value }` or `{ ok: false, error: ConformError }`. | [`src/validator/parse.ts:17-19`](../src/validator/parse.ts) |
 
 ## Catching library failures
 
-`DataBehaveError` is the discriminator between library-originated
-failures and bugs in user-supplied callbacks. Errors raised inside
-[`.derivedFrom`](./schema/bound-operators.md#derivedfrom) or
-[`.invariant`](./schema/bound-operators.md#invariant) callbacks are
-**not** wrapped — they surface as the original error class.
+`ConformError` reports collected value issues; `SchemaConflictError` reports builder or sampling conflicts.
+Invalid registries, metadata and IR contracts can throw `TypeError`; invalid sampling probabilities can throw
+`RangeError`. `safeParse` converts conformance issues to a result, not arbitrary runtime or plugin failures.
+During validation, standard derived/invariant callbacks that throw become `derived.callback-threw` or
+`invariant.callback-threw` issues. During generation, callback errors propagate. External descriptors own
+their error behavior, so `DataBehaveError` is not an exhaustive discriminator for runtime failures.
 
 ```ts
 import { DataBehaveError, parse, str } from '@databehave/schema'
@@ -56,7 +57,7 @@ try {
   if (e instanceof DataBehaveError) {
     console.error('databehave failure at', e.path.join('.'), e.message)
   } else {
-    throw e // user-callback bug — propagate
+    throw e // registry, metadata, options or plugin failure
   }
 }
 ```

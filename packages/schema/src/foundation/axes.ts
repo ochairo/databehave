@@ -1,3 +1,4 @@
+import { standardBehaviors } from '../standard/behaviors.js'
 /**
  * Data-schema axes.
  *
@@ -5,14 +6,9 @@
  * The generator inspects axes during sampling; the validator inspects only
  * `domain` (since distribution is a sampling hint, not a conformance constraint).
  *
- * Priority order during generation (high → low):
- *   1. invariants (single-record predicates that must hold)
- *   2. identity   (dataset-level — handled by dataset engine)
- *   3. derived    (computed from other fields → fixed)
- *   4. conditional shape (handled by union/discriminated)
- *   5. domain     (closed candidate set)
- *   6. distribution (weighting within domain ∩ type)
- *   7. type defaults
+ * Generation order: modifiers; derived; eventually; occasionally; bounded
+ * invariants around domain/distribution/kind sampling. Short-circuit values
+ * bypass invariants. Dataset identity is handled by the dataset policy.
  */
 
 /** A generation context exposed to derived functions and invariants. */
@@ -103,28 +99,15 @@ export type Axes = {
   readonly domain?: DomainConstraint
 }
 
-/** Merge two axis records (right-hand wins for scalar fields, lists concat). */
+/** Merge standard axes through their owning behavior descriptors. */
 export const mergeAxes = (a: Axes | undefined, b: Axes): Axes => {
   if (a === undefined) return b
-  const merged: {
-    distribution?: Distribution
-    occasionally?: readonly OccasionalOverride[]
-    eventually?: readonly EventuallyOverride[]
-    derived?: DerivedFn
-    invariants?: readonly InvariantFn[]
-    domain?: DomainConstraint
-  } = {}
-  const dist = b.distribution ?? a.distribution
-  if (dist !== undefined) merged.distribution = dist
-  const der = b.derived ?? a.derived
-  if (der !== undefined) merged.derived = der
-  const dom = b.domain ?? a.domain
-  if (dom !== undefined) merged.domain = dom
-  const occ = [...(a.occasionally ?? []), ...(b.occasionally ?? [])]
-  if (occ.length > 0) merged.occasionally = occ
-  const evn = [...(a.eventually ?? []), ...(b.eventually ?? [])]
-  if (evn.length > 0) merged.eventually = evn
-  const inv = [...(a.invariants ?? []), ...(b.invariants ?? [])]
-  if (inv.length > 0) merged.invariants = inv
-  return merged
+  let node: import('./ir.js').SchemaNode = { kind: 'metadata', mods: { axes: a ?? {} } }
+  for (const [id, incoming] of Object.entries(b)) {
+    const descriptor = standardBehaviors.find((behavior) => behavior.id === id)
+    if (descriptor === undefined) throw new TypeError(`missing schema behavior ${id}`)
+    const previous = descriptor.read(node)
+    node = descriptor.write(node, previous === undefined ? incoming : descriptor.merge(previous, incoming))
+  }
+  return node.mods?.axes ?? {}
 }

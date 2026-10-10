@@ -9,6 +9,9 @@ dist-test/
 coverage/
 *.tsbuildinfo
 *.tgz
+playwright-report/
+test-results/
+packages/admin/assets/
 
 # ── api-extractor working dir (snapshot is in etc/) ───────────
 packages/*/temp/
@@ -32,3 +35,4 @@ pnpm-debug.log*
 .DS_Store
 .vscode/
 .idea/
+artifacts/

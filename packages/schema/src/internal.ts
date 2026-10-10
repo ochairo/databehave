@@ -55,6 +55,7 @@ export type {
   ObjectKind,
   SchemaCore,
   SchemaNode,
+  StandardSchemaNode,
   StringFormat,
   StringKind,
   TupleKind,

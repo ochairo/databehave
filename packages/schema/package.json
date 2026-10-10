@@ -1,6 +1,6 @@
 {
   "name": "@databehave/schema",
-  "version": "0.1.4",
+  "version": "0.2.0",
   "description": "Schemas for how data behaves, not just its shape.",
   "type": "module",
   "author": "ochairo",
@@ -38,6 +38,18 @@
     "./internal": {
       "types": "./dist/internal.d.ts",
       "import": "./dist/internal.js"
+    },
+    "./runtime": {
+      "types": "./dist/runtime.d.ts",
+      "import": "./dist/runtime.js"
+    },
+    "./standard": {
+      "types": "./dist/standard.d.ts",
+      "import": "./dist/standard.js"
+    },
+    "./plugin": {
+      "types": "./dist/plugin.d.ts",
+      "import": "./dist/plugin.js"
     }
   },
   "files": [
@@ -47,7 +59,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": "^24.0.0 || ^26.0.0"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -56,18 +68,24 @@
     "test": "find dist-test/test -name '*.test.js' -print0 | xargs -0 node --test",
     "test:watch": "tsc -p tsconfig.test.json --watch & find dist-test/test -name '*.test.js' -print0 | xargs -0 node --test --watch",
     "clean": "rm -rf dist dist-test",
-    "pretest": "pnpm build:test",
-    "prepack": "pnpm clean && pnpm build",
-    "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test"
+    "pretest": "pnpm build:test"
   },
   "dependencies": {},
-  "peerDependencies": {},
+  "peerDependencies": {
+    "@databehave/core": "^0.1.0"
+  },
   "devDependencies": {
     "typescript": "6.0.3",
-    "@types/node": "25.9.1"
+    "@types/node": "25.9.1",
+    "@databehave/core": "workspace:*"
   },
   "publishConfig": {
     "access": "public",
     "provenance": true
+  },
+  "peerDependenciesMeta": {
+    "@databehave/core": {
+      "optional": true
+    }
   }
 }

@@ -6,13 +6,13 @@
  */
 import { describe, expect, it } from 'vitest'
 
-import { createServer } from '../src/index.js'
+import { createHttpFixture } from './support/http-fixture.js'
 import { mergeVary } from '../src/cors.js'
 
 describe('cors', () => {
   it('answers preflight OPTIONS without invoking handlers', async () => {
     let handlerCalled = false
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { exposeHeaders: ['x-mock-mode'] },
       routes: {
         'GET /api/v1/foo': () => {
@@ -40,7 +40,7 @@ describe('cors', () => {
   })
 
   it('decorates handler responses with CORS headers but does not override existing keys', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: () => 'https://allowed.example',
         credentials: true,
@@ -65,7 +65,7 @@ describe('cors', () => {
   })
 
   it('mirrors a missing Origin header to `*`', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {},
       routes: { 'GET /api/v1/foo': () => ({ json: { ok: true } }) },
     })
@@ -74,7 +74,7 @@ describe('cors', () => {
   })
 
   it('sets Vary: Origin on every CORS-decorated response', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: (o) => o },
       routes: { 'GET /api/v1/foo': () => ({ json: { ok: true } }) },
     })
@@ -87,7 +87,7 @@ describe('cors', () => {
   })
 
   it('omits Access-Control-Allow-Origin when the origin resolver returns empty', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: () => '' },
       routes: { 'GET /api/v1/foo': () => ({ json: { ok: true } }) },
     })
@@ -102,7 +102,7 @@ describe('cors', () => {
   })
 
   it('omits Access-Control-Allow-Origin on preflights when resolver returns empty', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: () => '' },
       routes: { 'GET /api/v1/foo': () => ({ json: { ok: true } }) },
     })
@@ -121,7 +121,7 @@ describe('cors', () => {
   })
 
   it('merges (not replaces) a handler-set Vary with the CORS Vary token', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: (o) => o },
       routes: {
         'GET /api/v1/foo': () => ({
@@ -142,7 +142,7 @@ describe('cors', () => {
   })
 
   it('deduplicates Vary tokens case-insensitively', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: (o) => o },
       routes: {
         'GET /api/v1/foo': () => ({
@@ -161,7 +161,7 @@ describe('cors', () => {
   })
 
   it('honours Vary: * by collapsing the merged value', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: (o) => o },
       routes: {
         'GET /api/v1/foo': () => ({
@@ -202,13 +202,13 @@ describe('mergeVary (unit)', () => {
 
 describe('CORS preflight', () => {
   it('echoes Access-Control-Request-Headers, applies credentials + custom maxAge', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => (o === '' ? '*' : o),
         credentials: true,
         maxAge: 600,
       },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {
@@ -229,14 +229,14 @@ describe('CORS preflight', () => {
   })
 
   it('omits Allow-Origin and Allow-Credentials when resolver returns empty and credentials is false', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: () => '' },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {
         method: 'OPTIONS',
-        headers: { origin: 'https://blocked.example.com' },
+        headers: { origin: 'https://blocked.example.com', 'access-control-request-method': 'POST' },
       }),
     )
     expect(res.status).toBe(204)
@@ -245,7 +245,7 @@ describe('CORS preflight', () => {
   })
 
   it('also omits Allow-Origin on regular responses when resolver returns empty', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: { origin: () => '' },
       routes: {
         'GET /api/v1/x': () => ({ json: { ok: true } }),
@@ -261,7 +261,7 @@ describe('CORS preflight', () => {
   })
 
   it('sets Access-Control-Expose-Headers when configured', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => o,
         exposeHeaders: ['x-trace-id', 'x-request-id'],
@@ -283,12 +283,12 @@ describe('CORS preflight', () => {
     // preflight must drop any requested token that is not on the
     // list — otherwise the allowlist is decorative and the server
     // effectively permits anything the browser asks for.
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => (o === '' ? '*' : o),
         allowHeaders: ['content-type', 'x-custom'],
       },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {
@@ -305,12 +305,12 @@ describe('CORS preflight', () => {
   })
 
   it('falls back to cfg.allowHeaders when the request omits Access-Control-Request-Headers', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => (o === '' ? '*' : o),
         allowHeaders: ['content-type', 'x-only'],
       },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {
@@ -325,12 +325,12 @@ describe('CORS preflight', () => {
   })
 
   it('de-duplicates repeated tokens (case-insensitive) in the intersection', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => (o === '' ? '*' : o),
         allowHeaders: ['content-type', 'x-custom'],
       },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {
@@ -353,12 +353,12 @@ describe('CORS preflight', () => {
     // Empty allowlist is a deliberate hard lockdown; emitting an
     // empty `access-control-allow-headers:` value is hostile, so the
     // header is dropped instead.
-    const server = createServer({
+    const server = createHttpFixture({
       cors: {
         origin: (o) => (o === '' ? '*' : o),
         allowHeaders: [],
       },
-      routes: {},
+      routes: { 'POST /api/v1/anything': () => ({ empty: true }) },
     })
     const res = await server.fetch(
       new Request('http://localhost/api/v1/anything', {

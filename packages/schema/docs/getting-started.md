@@ -17,8 +17,9 @@ npm install @databehave/schema
 # or: yarn add @databehave/schema
 ```
 
-`@databehave/schema` is zero-dependency. `dependencies: {}` and
-`peerDependencies: {}` are enforced by package metadata.
+The upcoming release requires Node.js 24 or 26; supported majors are 24 and 26.
+Standalone schema use has no runtime dependency on the host. The optional `/plugin` entry uses
+the `@databehave/core` peer when composing schemas into a host application.
 
 ## Step 1 — Describe a schema
 
@@ -46,8 +47,9 @@ validated yet. Per-builder reference:
 ## Step 2 — Sample a value
 
 [`mock(schema, options?)`](./generator/sampling.md#mock) turns the
-schema into a concrete value. Identical seed → identical value, on
-every machine, on every Node major in the support matrix.
+schema into a concrete value. Identical schemas, options and deterministic plugin implementations
+produce the same values under fixed runtime conditions. See the
+[determinism contract](./stability.md#determinism-contract) for numerical and version limits.
 
 ```ts
 import { mock } from '@databehave/schema'

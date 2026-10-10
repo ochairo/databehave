@@ -1,3 +1,4 @@
+import { standardBehaviors } from '../standard/behaviors.js'
 /**
  * Phantom-typed schema builder + Infer<>.
  *
@@ -44,59 +45,15 @@ export const Discrete: unique symbol = Symbol('databehave.cap.discrete')
 export const Numeric: unique symbol = Symbol('databehave.cap.numeric')
 export const Continuous: unique symbol = Symbol('databehave.cap.continuous')
 
-/**
- * Allow-list for which IR kinds may legally carry each axis distribution.
- *
- * Mirrors the type-system `this:` gating on `.weighted` / `.normal` /
- * `.typically`. Used by the runtime guard in those methods to fail-loud
- * when a caller bypasses TypeScript (`as any`, plain JS, `// @ts-ignore`).
- *
- * Stays in sync with `docs/stability.md` "capability matrix".
- */
-const CAP_BY_OP: {
-  readonly weighted: ReadonlySet<SchemaNode['kind']>
-  readonly normal: ReadonlySet<SchemaNode['kind']>
-  readonly typically: ReadonlySet<SchemaNode['kind']>
-} = {
-  // .weighted: discrete-valued kinds. For `kind:'number'` it is allowed only
-  // when `int === true` (further check below).
-  weighted: new Set<SchemaNode['kind']>(['number', 'string', 'literal', 'enum', 'boolean']),
-  // .normal: continuous-numeric kinds. For `kind:'number'` it is allowed
-  // only when `int === false` (further check below).
-  normal: new Set<SchemaNode['kind']>(['number', 'decimal']),
-  // .typically: any numeric kind (int or float or decimal — for ints the
-  // generator clamps and rounds).
-  typically: new Set<SchemaNode['kind']>(['number', 'decimal']),
-}
-
-const checkAxisAllowed = (
-  op: 'weighted' | 'normal' | 'typically',
-  node: SchemaNode,
-): void => {
-  if (!CAP_BY_OP[op].has(node.kind)) {
-    throw new SchemaConflictError(
-      `.${op}() is not applicable to schema kind '${node.kind}'`,
-      [],
-      `see docs/stability.md (capability matrix)`,
-    )
-  }
-  // Number-kind is split between `int()` (discrete) and `num()` (continuous).
-  if (node.kind === 'number') {
-    const isInt = node.int === true
-    if (op === 'weighted' && !isInt) {
-      throw new SchemaConflictError(
-        `.weighted() is not applicable to num() (continuous); use int().weighted([...]) for discrete numeric weighting`,
-        [],
-        `see docs/stability.md (capability matrix)`,
-      )
-    }
-    if (op === 'normal' && isInt) {
-      throw new SchemaConflictError(
-        `.normal() is not applicable to int() (discrete); use num().normal(...) for a continuous Gaussian`,
-        [],
-        `see docs/stability.md (capability matrix)`,
-      )
-    }
+/** Standard fluent builders delegate applicability to the standard behavior owner. */
+const checkAxisAllowed = (op: 'weighted' | 'normal' | 'typically', node: SchemaNode): void => {
+  const metadata: Distribution = op === 'weighted' ? { kind: 'weighted', weights: [] }
+    : op === 'normal' ? { kind: 'normal', mean: 0, stddev: 1 }
+    : { kind: 'typical', from: 0, to: 1 }
+  const distribution = standardBehaviors.find((behavior) => behavior.id === 'distribution')
+  if (distribution === undefined || !distribution.appliesTo(node, metadata)) {
+    const label = node.kind === 'number' ? (node.int === true ? 'int() (discrete)' : 'num() (continuous)') : `schema kind '${node.kind}'`
+    throw new SchemaConflictError(`.${op}() is not applicable to ${label}`, [], 'see docs/stability.md (capability matrix)')
   }
 }
 

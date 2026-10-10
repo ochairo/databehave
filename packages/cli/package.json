@@ -1,0 +1,49 @@
+{
+  "name": "@databehave/cli",
+  "version": "0.2.0",
+  "description": "Explicit plugin composition for Databehave",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ochairo/databehave.git",
+    "directory": "packages/cli"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "databehave": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": "^24.0.0 || ^26.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json && chmod +x dist/bin.js",
+    "typecheck": "tsc --noEmit",
+    "test": "tsc -p tsconfig.test.json && node --test dist-test/test/*.test.js",
+    "clean": "rm -rf dist dist-test"
+  },
+  "dependencies": {
+    "@databehave/core": "workspace:^"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "25.9.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

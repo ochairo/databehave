@@ -5,16 +5,15 @@ concrete value. The entry point is [`mock(schema, options?)`](./sampling.md#mock
 everything else on this page is a deeper cut into how that one call
 behaves.
 
-The generator's contract is **(schema, seed, input) → value**: identical
-inputs always produce identical output, on every machine, every run.
-That contract is the executable form of the [determinism
+Reproducibility requires fixed schema, options, deterministic plugin implementations and runtime conditions.
+Custom compositions call `runtime.mock`; root helpers use `standardRuntime`.
+See the [determinism
 overview](../design.md#5-determinism-model) in `design.md` — see
 [trace-replay.md#expectstable](./trace-replay.md#expectstable) for the
 test-time assertion.
 
-Every entry on these pages mirrors a real export from
-[`src/index.ts`](../../src/index.ts). Code samples type-check against
-the actual source signatures — no synthetic API.
+Public exports are recorded in the package's `etc/` API reports. The
+[runnable schema example](../../../../examples/schema.mjs) exercises the public runtime boundary.
 
 - [sampling.md](./sampling.md) — `mock(...)`, `MockOptions`,
   `GenContext`, `ModifierProbs`, `StableByFn`, axis priority, and the

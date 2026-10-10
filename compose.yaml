@@ -1,0 +1,30 @@
+x-podman:
+  in_pod: false
+
+services:
+  development:
+    build:
+      context: .
+      dockerfile: Containerfile
+    image: localhost/databehave-development:plugin-migration
+    user: "1000:1000"
+    userns_mode: "keep-id:uid=1000,gid=1000"
+    working_dir: /home/ochairo/projects/ochairo/databehave
+    labels:
+      io.dotfiles.project-root: /home/ochairo/projects/ochairo/databehave
+    volumes:
+      - type: bind
+        source: /home/ochairo/projects/ochairo/databehave
+        target: /home/ochairo/projects/ochairo/databehave
+        bind:
+          selinux: z
+    cap_drop:
+      - ALL
+    # Podman's default seccomp profile gates Chromium's namespace chroot on this capability.
+    cap_add:
+      - SYS_CHROOT
+    security_opt:
+      - no-new-privileges
+    http_proxy: false
+    shm_size: 1gb
+    stop_grace_period: 10s

@@ -12,11 +12,11 @@
  * migration stays backwards-compatible:
  * - origin: mirror request `Origin`, or `*` when absent
  * - credentials: header omitted by default; set `credentials: true` in
- *   `Config.cors` to send `Access-Control-Allow-Credentials: true`
+ *   `corsPlugin` to send `Access-Control-Allow-Credentials: true`
  */
 import type { CorsConfig, MockRequest, MockResponse } from './types.js'
 
-const DEFAULT_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS']
+const DEFAULT_METHODS = ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'HEAD', 'OPTIONS']
 const DEFAULT_HEADERS = ['content-type', 'authorization']
 
 const resolveOrigin = (cfg: CorsConfig, reqOrigin: string): string => {

@@ -47,6 +47,8 @@ export type TraceEntry = {
   readonly attempts?: number
   /** Free-form annotation (e.g. distribution kind, picked literal). */
   readonly note?: string
+  /** Contracts involved in this node, captured by the selected runtime. */
+  readonly contracts?: { readonly kind: import('../runtime/runtime.js').SchemaContract; readonly behaviors: readonly import('../runtime/runtime.js').SchemaContract[] }
 }
 
 export type TraceCollector = {

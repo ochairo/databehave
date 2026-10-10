@@ -9,9 +9,9 @@ const u = mock(User, { seed: 'demo' })
 ```
 
 `mock<S extends Schema>(schema: S, options?: MockOptions): Infer<S>` is
-the generator's only entry point. It is deterministic: identical
-`(schema, options.seed, options.input)` always produces an identical
-value tree, and the returned type is exactly `Infer<typeof schema>`.
+the standard composition's convenience entry point. Custom compositions use `runtime.mock(schema, options)`.
+With the same schema, all options, deterministic plugin implementations and runtime conditions, generation
+produces the same value tree. The returned type is `Infer<typeof schema>`.
 
 The runtime decision tree is the [axis priority
 order](../schema/bound-operators.md#axis-priority); the timing
@@ -21,9 +21,13 @@ the trace + replay helpers live in
 [trace-replay.md](./trace-replay.md).
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts).
+[`src/generator/engine.ts`](../../src/generator/engine.ts) (public options and standard wrapper),
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (execution),
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (standard sampling policy).
 
 ---
+
+<a id="mock"></a>
 
 ## `mock(schema, options?)`
 
@@ -91,8 +95,7 @@ request-scoped data (locale, current user, "now", etc.) into
 into the schema.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (`makeCtx`,
-`GenState.input`).
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`GenerationContext` construction).
 
 ## `MockOptions.index` — top-level row index
 
@@ -101,8 +104,8 @@ import { mock, int } from '@databehave/schema'
 
 const days = int().eventually(7, 0)  // every 7th sample is 0
 
-mock(days, { seed: 's', index: 6 })  // 0 — `index` drives `eventually`
-mock(days, { seed: 's', index: 7 })  // 0
+mock(days, { seed: 's', index: 6 })  // ordinary sample
+mock(days, { seed: 's', index: 7 })  // 0 — indices 0, 7, 14, … trigger the cadence
 ```
 
 `MockOptions.index: number` seeds `ctx.index` for the **top-level**
@@ -112,8 +115,7 @@ field to surface its per-row counter to `eventually` cadences and to
 `derivedFrom` callbacks.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (`rootIndex`
-plumbing in `GenState`, `nearestNumericIndex`).
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (numeric path segment and `options.index` selection).
 
 ## `MockOptions.modifierProbs`
 
@@ -158,10 +160,8 @@ This is also where the build-time `.default(v)` modifier (see
 becomes observable at sample time.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see the
-`DEFAULT_MODIFIER_PROBS = { default: 0, optional: 0, nullable: 0 }`
-constant, the per-key `RangeError` validation, and the modifier
-short-circuit block in `generateNode`.
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (defaults and range checks),
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (`modifiers.generate`).
 
 ## `MockOptions.stableBy`
 
@@ -197,8 +197,8 @@ machinery behind "snapshot the same row across runs even when the
 outer seed rotates."
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see
-`StableByFn`, `pickLeafRng`, and the `sampleByKind` leaf-rng wiring.
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`leafRng`) and
+[`src/standard/generation.ts`](../../src/standard/generation.ts) (standard kind sampling).
 
 ## `MockOptions.prng`
 
@@ -227,8 +227,7 @@ the determinism contract is calibrated against, and swapping it
 perturbs the output sequence.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see the
-`prngFactory = options.prng ?? mulberry32` wiring inside `mock()`.
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`factory = options.prng ?? mulberry32`).
 
 ## `GenContext`
 
@@ -250,15 +249,15 @@ readonly:
 
 | Field    | Meaning |
 | --- | --- |
-| `root`   | The value tree being assembled. `undefined` while the root itself is still in flight. |
+| `root`   | The generation runtime currently supplies `undefined`; use `parent` for completed sibling values. |
 | `parent` | The immediate enclosing object's data (frozen empty object at the root). |
 | `index`  | Nearest enclosing array index, falling back to `MockOptions.index` for the top-level schema. |
-| `input`  | The frozen `MockOptions.input` bag. Absent when no `input` was supplied. |
+| `input`  | The caller's `MockOptions.input` bag. Read-only by contract; plain `mock` does not deep-freeze it. Absent when no input was supplied. |
 | `seed`   | A path-scoped string seed `<rootSeed>:<path.join('.')>`. Stable across runs for a given `(seed, path)` pair. |
 
 Source:
 [`src/foundation/axes.ts`](../../src/foundation/axes.ts) (type),
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (`makeCtx`).
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`GenerationContext` construction).
 
 ## Axis priority
 
@@ -283,8 +282,13 @@ The DSL-side restatement, with build-time semantics, lives at
 [`schema/bound-operators.md#axis-priority`](../schema/bound-operators.md#axis-priority);
 the architectural overview lives at
 [`design.md` §4](../design.md#4-axis-priority). Both paraphrase the
-same source-of-truth comment block at the top of
-[`src/generator/engine.ts`](../../src/generator/engine.ts).
+same standard descriptors in
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts).
+
+Phases belong to the runtime; composition order determines behavior order within each phase. Modifier, derived and
+cadence short circuits bypass invariant sampling. Domain passes scoped candidates and uniform fallback to downstream
+distribution. A continuation override affects only that call; recursive child generation starts a fresh scope.
+See [schema extensions](../extending.md) when replacing or adding sampling behaviors.
 
 ## Rejection sampling
 
@@ -301,7 +305,7 @@ const impossible = int().min(0).max(10).invariant(v => (v as number) > 100)
 ```
 
 Single-record invariants are enforced by **rejection sampling** with a
-hard cap of `MAX_ATTEMPTS = 100` attempts per leaf. After 100 rejects
+hard cap of 100 attempts per node, including composites. After 100 rejects
 the generator throws `SchemaConflictError` carrying the failing path
 and the hint `'relax the invariant or narrow the distribution /
 domain'`. A passing sample emits a trace entry of axis
@@ -310,5 +314,4 @@ domain'`. A passing sample emits a trace entry of axis
 [trace-replay.md#trace-axes](./trace-replay.md#traceaxis)).
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (`MAX_ATTEMPTS`
-constant, the invariant loop in `generateNode`).
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (`invariants` retry loop).

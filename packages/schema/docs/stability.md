@@ -4,15 +4,18 @@ This document defines what `databehave` guarantees across versions. It is the
 single source of truth when deciding whether a change is `PATCH`, `MINOR`, or
 `MAJOR` under [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+Before 1.0, a minor release may contain breaking changes with a migration guide. The upcoming 0.2 release
+uses this rule. The PATCH/MINOR/MAJOR compatibility guarantees below apply to stable releases from 1.0.
+
 ## Public surface
 
-The **public surface** is exactly the symbols re-exported from `src/index.ts`
-plus the runtime shape of `SchemaNode` (the serialised IR). Anything reachable
-only through deeper paths (`databehave/src/...`, `_internal`, identifiers
-prefixed with `_`) is **internal** and may change in any release, including
-`PATCH`.
+The **public surface** consists of the declared package entry points: the root DSL and standard convenience
+functions, `/runtime` for runtime and descriptor contracts, `/standard` for the official composition, and
+`/plugin` for the optional application-host adapter. `/internal` is an exported low-level compatibility surface;
+new extensions should use `/runtime`. Source-file deep imports are not supported. API reports in `etc/` cover
+each entry point. `SchemaNode` is an open kind contract; `StandardSchemaNode` is the built-in node union.
 
-The set of public symbols is locked by `test/public-surface.test.ts`. A change
+Public API reports and `test/public-surface.test.ts` check these exports. A change
 to that snapshot is, by definition, at least a `MINOR` release (additive) or
 `MAJOR` (removal / rename / signature change).
 
@@ -26,7 +29,12 @@ to that snapshot is, by definition, at least a `MINOR` release (additive) or
 
 ## Determinism contract
 
-For every `(schema, options)` pair valid in version `V`:
+For a fixed schema, all generation options, deterministic descriptor implementations and their contract versions,
+seeded output follows the compatibility rules below. Changing a custom plugin implementation or its mutable state
+is outside the standard library's guarantee. The upcoming 0.2 migration is a breaking release; retain old fixtures
+when comparing it with 0.1.
+
+For stable releases within one major version:
 
 ```
 mock(schema, { seed: S })   in V.x.y   ===   mock(schema, { seed: S })   in V.x.z
@@ -38,10 +46,9 @@ i.e. `MAJOR` is the only level allowed to perturb seeded output. The cross-`MINO
 guarantee is the reason that schema-builder additions (e.g. a new `decimal()`
 overload) must never re-route control flow for schemas that did not opt in.
 
-The contract holds for a fixed `Node.js` major + ECMAScript engine. Output
-across Node majors is *not* guaranteed and is unlikely to differ because the
-PRNG uses only `Math.floor`, integer math, and `(>>> 0)` bit ops — but it is
-not enforced by tests.
+The contract assumes fixed Node.js/ECMAScript engine and numeric behavior. The upcoming release supports Node.js
+24 and 26, but support on both majors does not promise byte-equal output between them. Gaussian sampling uses
+transcendental math and may differ across engines/platforms. Custom callbacks and PRNGs must preserve determinism.
 
 ### `expectStable` vs `replay`
 
@@ -51,11 +58,10 @@ the outputs structurally — useful for catching obvious non-determinism
 (`Date.now()`, `Math.random()`, `Set` iteration order) but two
 iterations cannot prove the entire RNG sequence is fixed.
 
-The strong contract is `replay(schema, opts)`. It binds a fixed
-`(seed, input)` pair and returns a thunk callers can use to pin the
-value at the snapshot site. Use `replay` whenever you need a value to
-round-trip across releases; use `expectStable` as a cheap smoke check
-to fail fast when a `derivedFrom` callback strays.
+`replay(schema, opts)` binds the selected runtime, snapshots schema metadata and options, and exposes the required
+contract identities. Use it with stored expected values for regression tests. It keeps callbacks and their closures
+in process; it cannot freeze closure state or preserve an old plugin implementation across releases. Root `replay`
+uses `standardRuntime`; custom schemas use `runtime.replay`. Neither helper proves cross-version compatibility.
 
 ## "Fail loud" policy
 
@@ -71,19 +77,21 @@ safety net for users on `// @ts-ignore`, dynamic schema construction, or
 plain JS. The error always includes a recovery hint pointing to the correct
 alternative.
 
-## Extension contract (IR) {#extension-contract-ir}
+## Extension contract (IR)
 
-The serialised IR (`SchemaNode`) carries an implicit version equal to the
-package `MAJOR`. Extensions that read IR via `walkSchema` / `fromIR` are
-guaranteed:
+`IR_VERSION` is explicitly `2`, independent of the package version. `runtime.serializeSchema(schema)` writes
+`{ $databehaveVersion: 2, contracts: { kinds, behaviors }, node }`. Each required contract records its exact
+`id` and positive integer `version`; registration order is part of the runtime composition, not the envelope.
+Deserialization validates unknown input recursively and rejects missing, extra, duplicate or incompatible required
+contracts. An unrelated registered descriptor is allowed; an unrelated claimed envelope contract is not.
 
-1. Within a `MAJOR`, every `SchemaNode` shape they previously matched continues
-   to match (new kinds may be added).
-2. Across `MAJOR`, a release note enumerates the changed IR shapes and the
-   extension-author migration path.
+`runtime.fromIR(unknown)` validates an in-process node against the selected runtime. It does not supply missing
+plugins or convert persisted envelopes. Traversal and reconstruction use each kind's public callbacks, preserving
+custom nested kinds without editing a closed switch. Consumers must register every kind/behavior used by a schema.
+Callbacks may exist in in-process IR; serialization rejects closures, cycles and lossy JSON data.
 
-Extensions should default-case unknown `kind` values to forward-compat with
-`MINOR` additions.
+Version 1 envelopes require the explicit [migration procedure](../../../MIGRATION.md#schema-and-generation).
+Do not change only the version marker. See [schema extensions](extending.md) for descriptors and serialization.
 
 ## Error class hierarchy
 
@@ -94,14 +102,18 @@ DataBehaveError              (root; never thrown directly)
 ```
 
 `Issue.code` is part of the public surface and follows the same versioning
-rules as the rest of `index.ts`. The closed catalog of values lives in the
-`IssueCode` union (`src/foundation/errors.ts`) and is snapshot-locked by
+rules as the rest of the public API. The standard catalog lives in the open
+`IssueCode` type (`src/foundation/errors.ts`) and is snapshot-locked by
 `test/foundation/issue-codes.test.ts`:
 
 - Adding a new code is **MINOR** (and the snapshot test must be extended in
   the same commit).
 - Renaming, removing, or changing the meaning of an existing code is
   **MAJOR** (release notes must list the old → new mapping).
+
+Plugins may emit namespaced string codes. Their owners define their compatibility policy; consumers must handle
+unknown codes rather than assume the standard catalog is exhaustive. While the package is below 1.0, intentional
+breaking changes are documented in the upcoming minor release's migration notes.
 
 ### Issue messages are diagnostic-only
 

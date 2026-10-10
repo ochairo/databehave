@@ -2,7 +2,7 @@
   "name": "databehave-monorepo",
   "version": "0.0.0",
   "private": true,
-  "description": "Monorepo for @databehave/schema and @databehave/server.",
+  "description": "Composable data behavior and HTTP plugins for Databehave.",
   "license": "MIT",
   "author": "ochairo",
   "repository": {
@@ -11,7 +11,7 @@
   },
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": "^24.0.0 || ^26.0.0"
   },
   "scripts": {
     "build": "pnpm -r build",
@@ -19,14 +19,29 @@
     "typecheck": "pnpm -r typecheck",
     "clean": "pnpm -r clean",
     "lint": "biome check",
-    "format:check": "echo 'biome formatter disabled (see biome.json) — lint covers code quality'",
-    "format": "biome check --write",
-    "pack:check": "PREPACK_SKIP_TESTS=1 pnpm -r exec npm pack --dry-run",
-    "api:check": "pnpm -r exec api-extractor run --local --verbose"
+    "pack:check": "node scripts/packaged-consumer.mjs",
+    "api:check": "node scripts/api-reports.mjs",
+    "api:update": "node scripts/api-reports.mjs --update",
+    "test:e2e": "playwright test",
+    "docs:check": "node scripts/check-docs.mjs",
+    "examples:check": "node scripts/check-examples.mjs",
+    "workflow:check": "actionlint -shellcheck= .github/workflows/*.yml",
+    "test:tooling": "node --test scripts/*.test.mjs",
+    "release:prepare": "node scripts/release.mjs prepare",
+    "release:verify": "node scripts/release.mjs verify",
+    "release:dry-run": "node scripts/release.mjs dry-run",
+    "signatures:check": "node scripts/check-signatures.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.16",
-    "@microsoft/api-extractor": "^7.58.7"
+    "@cyclonedx/cdxgen": "11.11.0",
+    "@microsoft/api-extractor": "^7.58.7",
+    "@playwright/test": "1.64.0",
+    "github-slugger": "2.0.0",
+    "remark-parse": "11.0.0",
+    "typescript": "6.0.3",
+    "unified": "11.0.5",
+    "yaml": "2.8.1"
   },
   "packageManager": "pnpm@10.33.4+sha512.1c67b3b359b2d408119ba1ed289f34b8fc3c6873412bec6fd264fbdc82489e510fcbecb9ce9d22dae7f3b76269d8441046014bdca53b9979cd7a561ad631b800"
 }

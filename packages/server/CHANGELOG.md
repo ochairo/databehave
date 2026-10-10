@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Upcoming package version: **0.2.0**. This section describes planned release contents, not a published release.
+
+### Breaking changes
+
+- Require Node.js 24 or 26; support and test majors 24 and 26. Drop Node.js 18, 20 and 22.
+- Replace `createServer` and server-owned JSONC/CLI assembly with core host composition and explicit HTTP plugins.
+- Move OpenAPI, request validation, admin UI, fault controls and CLI ownership to their separate packages.
+- Move the shared drain timeout to `httpPlugin`; HTTP owns both in-process requests and response stream lifetimes.
+
+### Added
+
+- Public route, middleware, bind-guard and route-source contracts with registration sealing and staged startup.
+- Explicit Node transport, CORS and access logging plugins, authority validation, bounded shutdown and cancellation.
+- Consistent HEAD fallback, response decoration, route precedence and single-outcome observation.
+
+See [migration](../../MIGRATION.md) and [release procedures](../../docs/releasing.md).
+
 ## [0.1.0] - 2026-06-03
 
 Initial public release of `@databehave/server`.

@@ -23,15 +23,14 @@ databehave lets you say all of that. One schema becomes:
 
 | Non-goal | Reason |
 | --- | --- |
-| HTTP, framework, CLI | Already solved by Fastify / Express / msw etc. Adding them couples databehave to a stack. |
+| HTTP, framework, CLI in the standalone schema runtime | These belong to separate packages composed through the application host. |
 | OpenAPI ingestion / zod adapter | Belongs in *external* packages that consume databehave's IR. |
 | NP-hard solver for conflicting axes | Predictable failure (`SchemaConflictError`) is more valuable than slow magic. |
 | `Math.random()`, `Date.now()` inside generation | Breaks determinism — the single feature tests depend on. |
 | Float-equality invariants | Use `decimal()`; floats are the wrong type for "exactly". |
 | Circular `derivedFrom` chains | Not solvable; refactor your schema. |
 
-These are *intentional*. Each one is a permanent design choice, not a
-"someday" gap.
+These boundaries keep the standalone schema runtime usable without an HTTP application.
 
 ## 3. Architecture
 
@@ -54,51 +53,37 @@ These are *intentional*. Each one is a permanent design choice, not a
 
 - **Builders** (`obj`, `str`, `decimal`, …) are *user-facing convenience*.
   They produce a `Schema<T>` whose phantom `_type` carries the TS type
-  and whose `_node` is a plain serializable `SchemaNode` (the IR).
+  and whose `_node` is a `SchemaNode` (the IR).
 - **IR** (`SchemaNode` + `Modifiers` + `Axes`) is the only contract the
-  generator and validator see. It is JSON-serializable, inspectable,
-  transformable. Builder classes never escape.
+  runtime descriptors see. It is inspectable and transformable. In-process axes may contain callbacks;
+  serialization accepts only lossless JSON data and records required contracts in an explicit version 2 envelope.
 - **Generator** consumes IR + a seed and emits a value.
 - **Validator** consumes IR + a value and emits a typed value or issues.
-- **Plugins** consume IR via `walkSchema` and may emit IR back via
-  `fromIR` (or compose existing builders).
+- **Runtime** owns sealed, instance-local kind and behavior registries. Kind descriptors own generation,
+  validation, traversal and reconstruction; behavior descriptors own their middleware and serialization.
+- **Plugins** consume IR via `runtime.walkSchema` and reconstruct through `runtime.fromIR`, or compose builders.
+  All recursive operations retain the selected runtime. Root convenience helpers bind `standardRuntime`.
 
-This separation is what lets the project stay zero-dependency: builders,
-generator, and validator each depend only on the IR types and the PRNG
-helper.
+The standalone runtime has no application-host or transport dependency. The optional `/plugin` adapter connects
+it to `@databehave/core` when an application needs to expose a schema capability.
 
 *See also:* [generator/](./generator/index.md) (sampling pipeline),
 [validator/](./validator/index.md) (`parse` / `safeParse`).
 
 ## 4. Axis priority
 
-When the generator produces a value at a path, it consults axes in this
-order (highest priority wins; lower-priority axes constrain candidate
-sets, they do not override):
+Standard behavior execution follows these phase barriers:
 
-1. **Invariants** (single-record) — rejection sampling, up to
-   `MAX_ATTEMPTS` (100). If still failing, `SchemaConflictError`.
-2. **Identity** — handled by `mockDataset`; identity tuples are unique
-   per call (collisions are re-sampled; if the identity domain is too
-   small for `n`, the dataset throws).
-3. **Derived** — `derivedFrom(ctx => …)` returns the value verbatim.
-   Skips all sampling.
-4. **Conditional shape** — `discriminated(key, map)` selects the branch
-   by the discriminator (O(1)); `union` falls back to uniform branch
-   choice.
-5. **Domain** — `.in([…])` or `.in({ kind: 'lookup', … })`. Narrows the
-   candidate set. If a `weighted` distribution is also declared, only
-   weights whose value lives in the domain are used.
-6. **Distribution** — `.weighted(…)`, `.typically(…)`, `.normal(…)`.
-   Picks within the (domain ∩ type) set.
-7. **Type defaults** — uniform within declared bounds.
-8. **Modifier short-circuits** — `optional → undefined`, `nullable → null`,
-   `default → defaultValue`. Off by default in `mock()`; enable per call
-   via `MockOptions.modifierProbs`.
+1. **Modifiers** — `default`, `optional`, then `nullable`; generation probabilities default to zero.
+2. **Derived** — return the callback's value without sampling.
+3. **Cadence** — `eventually`, then `occasionally`.
+4. **Invariants** — retry downstream sampling up to 100 times.
+5. **Sampling** — domain candidates, distribution, then kind generation or a scoped fallback.
 
-**Cadence overrides** (`occasionally`, `eventually`) stack *before* the
-distribution stage. `eventually` (deterministic, periodic via `ctx.index`)
-runs before `occasionally` (probabilistic, i.i.d.).
+Modifier, derived and cadence short circuits bypass invariant sampling. Validation is separate and checks
+primitive as well as composite invariants. Domain supplies candidates and a uniform fallback to downstream
+distribution middleware; distribution owns weighting. Custom behaviors retain composition order within each phase.
+Kind descriptors own composite branch selection. Dataset identity uniqueness is enforced after each row is generated.
 
 The trace collector (`createTrace()`) annotates every leaf with the axis
 that won, so this priority is observable from tests.
@@ -112,9 +97,9 @@ that won, so this priority is observable from tests.
 ## 5. Determinism model
 
 ```txt
-topSeed   = rngFromString(options.seed ?? '')   ← FNV-1a → mulberry32
+topSeed   = options.seed ?? 'databehave'   ← string seeds use FNV-1a → mulberry32
   ↓
-  ↓ per-leaf reseed: rngFromString(`${path}|${identityHash}`)
+  ↓ optional stableBy leaf reseed: rngFromString(`${key}:${path.join('.')}`)
   ↓
 value
 ```
@@ -122,8 +107,8 @@ value
 Seed derivation uses only `node:` builtins and IEEE-754 arithmetic
 (`seedFromString` is FNV-1a 32-bit; `mulberry32` is a 32-bit integer PRNG).
 The generator never reads the wall clock, the environment, the network,
-or `Math.random()`. Identical `(seed, input)` always produces an
-identical value tree under the same Node/V8 build.
+or `Math.random()`. Identical schema, options and deterministic plugin implementations produce an
+identical value tree under the same runtime/numeric conditions. External callbacks must honor that constraint.
 
 **Cross-platform caveats.** The uniform sampling path uses only IEEE-754
 arithmetic that is bit-exact across conforming engines. The `.normal(...)`
@@ -137,8 +122,8 @@ between platforms. `.typically(...)` and uniform sampling are bit-exact.
 (all-zero by default) — see
 [generator/sampling.md#mockoptionsmodifierprobs](./generator/sampling.md#mockoptionsmodifierprobs).
 
-`expectStable(schema, opts)` is the executable form of this contract:
-it generates twice and throws on divergence — see
+`expectStable(schema, opts)` is a diagnostic smoke check:
+it generates twice and throws on divergence, but cannot prove determinism — see
 [generator/trace-replay.md#expectstable](./generator/trace-replay.md#expectstable).
 
 *See also:* [generator/seed.md](./generator/seed.md) (default seed,
@@ -153,15 +138,13 @@ mockDataset({ name: 'Catalog', schema: Row, identity: ['group', 'item'], n: 7 })
 ```
 
 - Each row is generated with a per-row sub-seed
-  `${seedPrefix}:row:${i}:attempt:0`.
+  `${seedPrefix ?? name}:row:${i}:attempt:${attempt}:dedup:${dedup}`.
 - After generation, the identity key
   `'DATASET|Catalog|group=...&item=...'` is computed (`identityKey()` from
   `foundation/hash.ts` — sorted, plain-string join, no hashing).
-- Collisions return the previously cached row → identical identity tuples
-  always produce the same value, regardless of which endpoint asked for
-  it.
-- Aggregate invariants run after the full row list is assembled; if any
-  fail, `SchemaConflictError` is thrown (single attempt).
+- Collisions trigger fresh row samples, with eight candidates per row. There is no shared cross-call row cache.
+- Aggregate invariants run after the full row list is assembled. Collision exhaustion or a rejected aggregate
+  causes a full retry with new seeds, up to two dataset attempts; exhaustion throws `SchemaConflictError`.
 
 Cross-dataset foreign keys use `relate(rows, field)` as the
 `derivedFrom` callback — selection is itself deterministic per seed.
@@ -171,14 +154,14 @@ Cross-dataset foreign keys use `relate(rows, field)` as the
 Two error classes, both with structured `path`:
 
 - **`ConformError`** — `parse()` failure. Carries `issues: Issue[]` with
-  `{ path, message, expected?, received? }`. Designed for human-readable
-  multi-issue reporting.
+  `{ path, code, message, expected?, received? }`. Use `code` and `path` for machine matching;
+  standard codes coexist with plugin-defined strings.
 - **`SchemaConflictError`** — generator gave up. Carries `path` and an
   optional `hint`. Raised for unsatisfiable bounds, invariants that
   reject every sample, or aggregate dataset invariants that cannot hold.
 
-Validation and generation never throw anything else; if you see another
-error class, it's a bug.
+Invalid metadata/registries can throw `TypeError`, invalid options can throw `RangeError`, and plugin errors can
+propagate. Standard validation turns derived/invariant callback failures into issues; generation propagates them.
 
 *See also:* [validator/api.md#conformerror](./validator/api.md#conformerror)
 (validator emission shape; `Issue` per failed check).

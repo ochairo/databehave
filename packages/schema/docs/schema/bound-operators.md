@@ -8,8 +8,8 @@ families:
   `max`, decimal `min` / `max`, array `length` / `min` / `max`).
 - **Axes** — sampling and conformance metadata attached under
   `_node.mods.axes`. The generator inspects axes during sampling; the
-  validator inspects only `domain` (since distributions are sampling
-  hints, not conformance constraints).
+  validator enforces domain, derived equality and invariants. Distributions and cadence are sampling policy,
+  not conformance constraints.
 
 Cross-kind compatibility is enforced by the
 [capability matrix](#capability-matrix) — applying an operator the
@@ -270,7 +270,7 @@ sub-randomness from `ctx.seed`, never from `Math.random()` or
 
 ```ts
 {
-  readonly root:    unknown                                      // entire value being built
+  readonly root:    unknown                                      // currently undefined during generation
   readonly parent:  Readonly<Record<string, unknown>>            // immediate sibling object
   readonly index?:  number                                       // nearest enclosing array index
   readonly input?:  Readonly<Record<string, unknown>>            // caller-supplied context
@@ -302,7 +302,7 @@ const evenScore = int()
 `Schema<T>.invariant(fn: InvariantFn): this` where
 `InvariantFn = (value: unknown, ctx: GenContext) => boolean`. Applies
 to any schema. The generator rejection-samples up to `MAX_ATTEMPTS`
-(= 100, see `src/generator/engine.ts`) — exhaustion throws
+(= 100, see `src/standard/behaviors.ts`) — exhaustion throws
 `SchemaConflictError`. Multiple `.invariant(...)` calls stack; all must
 hold.
 
@@ -365,26 +365,13 @@ Source:
 
 ## Axis priority
 
-When more than one axis is attached to the same node, the generator
-evaluates them in this order (high → low):
-
-1. **invariants** — single-record predicates that must hold.
-2. **identity** — dataset-level (handled by the dataset engine; see
-   [`../dataset/index.md`](../dataset/index.md)).
-3. **derived** — computed via `.derivedFrom(fn)`; skips sampling.
-4. **conditional shape** — `union` / `discriminated` branch selection.
-5. **domain** — closed candidate set from `.in(...)`.
-6. **distribution** — `.weighted` / `.normal` / `.typically`.
-7. **type defaults** — kind-specific fallback (e.g. uniform within
-   `[min, max]`).
-
-Cadence overrides (`.occasionally` / `.eventually`) layer above the
-distribution stage: `eventually` is evaluated first, then
-`occasionally`, then the base distribution feeds in. The canonical
-restatement of this priority lives in
-[`../design.md#4-axis-priority`](../design.md#4-axis-priority).
+The standard composition evaluates modifier short circuits (`default`, `optional`, `nullable`), derived values,
+cadence (`eventually`, then `occasionally`), invariant retries, domain, distribution, then kind sampling.
+Modifier, derived and cadence results bypass invariant sampling. Invariants wrap only downstream sampling.
+Domain supplies scoped candidates/fallback; distribution owns weighting. Composite kinds own branch selection;
+dataset identity checks run outside this per-node pipeline. See the
+[sampling contract](../generator/sampling.md#axis-priority) and [extension guide](../extending.md).
 
 Source:
 [`src/foundation/axes.ts`](../../src/foundation/axes.ts) and
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (the
-generator restates the order in its file header).
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts).

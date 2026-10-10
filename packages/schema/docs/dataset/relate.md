@@ -31,6 +31,8 @@ Source:
 
 ---
 
+<a id="relate"></a>
+
 ## `relate(rows, field, opts?)`
 
 Signature:

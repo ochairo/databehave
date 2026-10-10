@@ -40,6 +40,57 @@ export type Axes = {
     readonly domain?: DomainConstraint;
 };
 
+// @public
+export interface BehaviorDefinition<M> {
+    // (undocumented)
+    readonly appliesTo: (node: SchemaNode, metadata: M) => boolean;
+    // (undocumented)
+    readonly checkMetadata: (metadata: unknown) => M;
+    // (undocumented)
+    readonly generate: (metadata: M, node: SchemaNode, context: GenerationContext, next: GenerationNext) => unknown;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly merge: (previous: M, next: M) => M;
+    // (undocumented)
+    readonly phase: BehaviorPhase;
+    // (undocumented)
+    readonly serialize: (metadata: M) => unknown;
+    // (undocumented)
+    readonly validate: (metadata: M, node: SchemaNode, value: unknown, context: ValidationContext, next: () => unknown) => unknown;
+    // (undocumented)
+    readonly version: number;
+}
+
+// @public
+export interface BehaviorDescriptor {
+    // (undocumented)
+    readonly appliesTo: (node: SchemaNode, metadata: unknown) => boolean;
+    // (undocumented)
+    readonly checkMetadata: (metadata: unknown) => unknown;
+    // (undocumented)
+    readonly generate: (metadata: unknown, node: SchemaNode, context: GenerationContext, next: GenerationNext) => unknown;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly merge: (previous: unknown, next: unknown) => unknown;
+    // (undocumented)
+    readonly phase: BehaviorPhase;
+    // (undocumented)
+    readonly read: (node: SchemaNode) => unknown;
+    // (undocumented)
+    readonly serialize: (metadata: unknown) => unknown;
+    // (undocumented)
+    readonly validate: (metadata: unknown, node: SchemaNode, value: unknown, context: ValidationContext, next: () => unknown) => unknown;
+    // (undocumented)
+    readonly version: number;
+    // (undocumented)
+    readonly write: (node: SchemaNode, metadata: unknown) => SchemaNode;
+}
+
+// @public
+export type BehaviorPhase = 'modifier' | 'derived' | 'cadence' | 'invariant' | 'sample';
+
 // @public (undocumented)
 export const bool: () => BooleanSchema;
 
@@ -58,6 +109,9 @@ export class ConformError extends DataBehaveError {
     readonly issues: readonly Issue[];
     readonly path: readonly (string | number)[];
 }
+
+// @public
+export const createSchemaRuntime: (options: SchemaRuntimeOptions) => SchemaRuntime;
 
 // @public (undocumented)
 export const createTrace: () => TraceCollector;
@@ -97,6 +151,12 @@ export class DecimalSchema extends Schema<string> {
         mods?: Modifiers;
     };
 }
+
+// @public
+export const defineBehavior: <M>(definition: BehaviorDefinition<M>) => TypedBehavior<M>;
+
+// @public
+export const defineKind: <T, N extends SchemaNode>(definition: KindDefinition<T, N>) => TypedKind<T, N>;
 
 // @public
 export type DerivedFn<T = unknown> = (ctx: GenContext) => T;
@@ -155,6 +215,29 @@ export type GenContext = {
 };
 
 // @public
+export interface GenerationContext extends GenContext {
+    // (undocumented)
+    readonly emit: (entry: TraceEntry) => void;
+    // (undocumented)
+    readonly generate: (node: SchemaNode, path: readonly (string | number)[], parent: Readonly<Record<string, unknown>>) => unknown;
+    // (undocumented)
+    readonly isDeferred: (node: SchemaNode) => boolean;
+    // (undocumented)
+    readonly leafRng: () => Rng;
+    // (undocumented)
+    readonly modifierProbs: Required<ModifierProbs>;
+    // (undocumented)
+    readonly path: readonly (string | number)[];
+    // (undocumented)
+    readonly rng: Rng;
+    // (undocumented)
+    readonly sampling?: SamplingContext;
+}
+
+// @public
+export type GenerationNext = (sampling?: SamplingContext) => unknown;
+
+// @public
 export const identityFor: (datasetName: string, identityKeys: readonly string[], row: Record<string, unknown>) => string;
 
 // @public
@@ -174,6 +257,9 @@ export class IntSchema extends NumberSchema {
 // @public
 export type InvariantFn = (value: unknown, ctx: GenContext) => boolean;
 
+// @public
+export const IR_VERSION: 2;
+
 // @public (undocumented)
 export type Issue = {
     readonly path: readonly (string | number)[];
@@ -184,7 +270,47 @@ export type Issue = {
 };
 
 // @public
-export type IssueCode = 'array.expected' | 'array.length-mismatch' | 'array.too-long' | 'array.too-short' | 'boolean.expected' | 'decimal.expected' | 'decimal.not-numeric' | 'decimal.scale-exceeded' | 'derived.callback-threw' | 'derived.mismatch' | 'discriminated.expected-object' | 'discriminated.missing-tag' | 'discriminated.unknown-tag' | 'domain.lookup-mismatch' | 'domain.not-in-values' | 'enum.not-member' | 'invariant.callback-threw' | 'invariant.failed' | 'literal.not-equal' | 'null.expected' | 'number.expected' | 'number.not-integer' | 'number.too-large' | 'number.too-small' | 'object.expected' | 'required' | 'string.expected' | 'string.pattern-mismatch' | 'string.too-long' | 'string.too-short' | 'tuple.expected-array' | 'tuple.length-mismatch' | 'unexpected-null' | 'union.no-match';
+export type IssueCode = 'array.expected' | 'array.length-mismatch' | 'array.too-long' | 'array.too-short' | 'boolean.expected' | 'decimal.expected' | 'decimal.not-numeric' | 'decimal.scale-exceeded' | 'derived.callback-threw' | 'derived.mismatch' | 'discriminated.expected-object' | 'discriminated.missing-tag' | 'discriminated.unknown-tag' | 'domain.lookup-mismatch' | 'domain.not-in-values' | 'enum.not-member' | 'invariant.callback-threw' | 'invariant.failed' | 'literal.not-equal' | 'null.expected' | 'number.expected' | 'number.not-integer' | 'number.too-large' | 'number.too-small' | 'object.expected' | 'required' | 'string.expected' | 'string.pattern-mismatch' | 'string.too-long' | 'string.too-short' | 'tuple.expected-array' | 'tuple.length-mismatch' | 'unexpected-null' | 'union.no-match' | (string & {});
+
+// @public
+export interface KindDefinition<T, N extends SchemaNode> {
+    // (undocumented)
+    readonly checkMetadata: (node: unknown) => N;
+    // (undocumented)
+    readonly children: (node: N) => readonly SchemaChild[];
+    // (undocumented)
+    readonly describe?: (node: N, describeChild: (node: SchemaNode) => string) => string;
+    // (undocumented)
+    readonly generate: (node: N, context: GenerationContext) => T;
+    // (undocumented)
+    readonly id: N['kind'];
+    // (undocumented)
+    readonly rebuild: (node: N, children: readonly SchemaChild[]) => N;
+    // (undocumented)
+    readonly validate: (node: N, value: unknown, context: ValidationContext) => unknown;
+    // (undocumented)
+    readonly version: number;
+}
+
+// @public
+export interface KindDescriptor {
+    // (undocumented)
+    readonly checkMetadata: (node: unknown) => SchemaNode;
+    // (undocumented)
+    readonly children: (node: SchemaNode) => readonly SchemaChild[];
+    // (undocumented)
+    readonly describe?: (node: SchemaNode, describeChild: (node: SchemaNode) => string) => string;
+    // (undocumented)
+    readonly generate: (node: SchemaNode, context: GenerationContext) => unknown;
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly rebuild: (node: SchemaNode, children: readonly SchemaChild[]) => SchemaNode;
+    // (undocumented)
+    readonly validate: (node: SchemaNode, value: unknown, context: ValidationContext) => unknown;
+    // (undocumented)
+    readonly version: number;
+}
 
 // @public (undocumented)
 export const literal: <V extends string | number | boolean | null>(value: V) => LiteralSchema<V>;
@@ -205,7 +331,7 @@ export class LiteralSchema<V extends string | number | boolean | null> extends S
 export const mock: <S extends Schema>(schema: S, options?: MockOptions) => Infer<S>;
 
 // @public
-export const mockDataset: <S extends Schema>(opts: DatasetOptions<S>) => Infer<S>[];
+export const mockDataset: <S extends Schema>(options: DatasetOptions<S>) => Infer<S>[];
 
 // @public (undocumented)
 export type MockOptions = {
@@ -233,6 +359,7 @@ export type Modifiers = {
     readonly defaultValue?: unknown;
     readonly description?: string;
     readonly axes?: Axes;
+    readonly behaviors?: Readonly<Record<string, unknown>>;
 };
 
 // @public
@@ -314,10 +441,7 @@ export type RelateOptions = {
 };
 
 // @public
-export type Replay<S extends Schema> = {
-    (): Infer<S>;
-    readonly options: Readonly<MockOptions>;
-};
+export type Replay<S extends Schema> = RuntimeReplay<S>;
 
 // @public
 export const replay: <S extends Schema>(schema: S, options?: MockOptions) => Replay<S>;
@@ -329,10 +453,20 @@ export type Rng = {
     pick<T>(items: readonly T[]): T;
 };
 
+// @public
+export interface RuntimeReplay<S extends Schema> {
+    // (undocumented)
+    (): Infer<S>;
+    // (undocumented)
+    readonly contracts: SchemaEnvelope['contracts'];
+    // (undocumented)
+    readonly options: Readonly<MockOptions>;
+}
+
 // @public (undocumented)
 export const safeParse: <S extends Schema>(schema: S, value: unknown) => SafeParseResult<Infer<S>>;
 
-// @public (undocumented)
+// @public
 export type SafeParseResult<T> = {
     readonly ok: true;
     readonly value: T;
@@ -340,6 +474,14 @@ export type SafeParseResult<T> = {
     readonly ok: false;
     readonly error: ConformError;
 };
+
+// @public
+export interface SamplingContext {
+    // (undocumented)
+    readonly candidates: readonly unknown[];
+    // (undocumented)
+    readonly fallback: () => unknown;
+}
 
 // @public
 export class Schema<T = unknown> {
@@ -386,6 +528,14 @@ export class Schema<T = unknown> {
 }
 
 // @public
+export interface SchemaChild {
+    // (undocumented)
+    readonly key: string | number;
+    // (undocumented)
+    readonly node: SchemaNode;
+}
+
+// @public
 export class SchemaConflictError extends DataBehaveError {
     constructor(message: string, path?: readonly (string | number)[], hint?: string, code?: string);
     readonly code?: string;
@@ -395,15 +545,95 @@ export class SchemaConflictError extends DataBehaveError {
     readonly path: readonly (string | number)[];
 }
 
-// Warning: (ae-forgotten-export) The symbol "SchemaCore" needs to be exported by the entry point index.d.ts
-//
-// @public (undocumented)
-export type SchemaNode = SchemaCore & {
+// @public
+export interface SchemaContract {
+    // (undocumented)
+    readonly id: string;
+    // (undocumented)
+    readonly version: number;
+}
+
+// @public
+export interface SchemaEnvelope {
+    // (undocumented)
+    readonly $databehaveVersion: typeof IR_VERSION;
+    // (undocumented)
+    readonly contracts: {
+        readonly kinds: readonly SchemaContract[];
+        readonly behaviors: readonly SchemaContract[];
+    };
+    // (undocumented)
+    readonly node: SchemaNode;
+}
+
+// @public
+export interface SchemaNode {
+    // (undocumented)
+    readonly [metadata: string]: unknown;
+    // (undocumented)
+    readonly kind: string;
+    // (undocumented)
     readonly mods?: Modifiers;
-};
+}
+
+// @public
+export interface SchemaRuntime {
+    // (undocumented)
+    readonly deserializeSchema: (envelope: unknown) => Schema<unknown>;
+    // (undocumented)
+    readonly fromIR: (node: unknown) => Schema<unknown>;
+    // (undocumented)
+    readonly mock: <S extends Schema>(schema: S, options?: MockOptions) => Infer<S>;
+    // (undocumented)
+    readonly mockDataset: <S extends Schema>(options: DatasetOptions<S>) => Infer<S>[];
+    // (undocumented)
+    readonly parse: <S extends Schema>(schema: S, value: unknown) => Infer<S>;
+    // (undocumented)
+    readonly replay: <S extends Schema>(schema: S, options?: MockOptions) => RuntimeReplay<S>;
+    // (undocumented)
+    readonly safeParse: <S extends Schema>(schema: S, value: unknown) => SafeParseResult<Infer<S>>;
+    // (undocumented)
+    readonly serializeSchema: (schema: Schema) => SchemaEnvelope;
+    // (undocumented)
+    readonly walkSchema: (schema: Schema | SchemaNode, visitor: SchemaVisitor) => void;
+    // (undocumented)
+    readonly withBehavior: <T>(schema: Schema<T>, id: string, metadata: unknown) => Schema<T>;
+}
+
+// @public
+export interface SchemaRuntimeOptions {
+    // (undocumented)
+    readonly behaviors: readonly BehaviorDescriptor[];
+    // (undocumented)
+    readonly kinds: readonly KindDescriptor[];
+}
+
+// @public
+export interface SchemaVisitor {
+    // (undocumented)
+    readonly enter?: (node: SchemaNode, path: WalkPath) => void | boolean;
+    // (undocumented)
+    readonly leave?: (node: SchemaNode, path: WalkPath) => void;
+}
 
 // @public
 export type StableByFn = (ctx: GenContext) => string | null | undefined;
+
+// @public
+export const standardBehaviors: readonly BehaviorDescriptor[];
+
+// @public
+export const standardKinds: readonly KindDescriptor[];
+
+// @public
+export const standardRuntime: SchemaRuntime;
+
+// Warning: (ae-forgotten-export) The symbol "SchemaCore" needs to be exported by the entry point index.d.ts
+//
+// @public
+export type StandardSchemaNode = SchemaCore & {
+    readonly mods?: Modifiers;
+};
 
 // @public (undocumented)
 export const str: () => StringSchema;
@@ -443,6 +673,10 @@ export type TraceEntry = {
     readonly axis: TraceAxis;
     readonly attempts?: number;
     readonly note?: string;
+    readonly contracts?: {
+        readonly kind: SchemaContract;
+        readonly behaviors: readonly SchemaContract[];
+    };
 };
 
 // @public (undocumented)
@@ -461,6 +695,18 @@ export class TupleSchema<T extends readonly Schema[]> extends Schema<InferTuple<
     readonly _node: TupleKind & {
         mods?: Modifiers;
     };
+}
+
+// @public
+export interface TypedBehavior<M> extends BehaviorDescriptor {
+    // (undocumented)
+    readonly apply: <T>(schema: Schema<T>, metadata: M) => Schema<T>;
+}
+
+// @public
+export interface TypedKind<T, N extends SchemaNode> extends KindDescriptor {
+    // (undocumented)
+    readonly schema: (metadata: Omit<N, 'kind'>) => Schema<T>;
 }
 
 // @public
@@ -487,6 +733,23 @@ export class UnionSchema<T extends readonly Schema[]> extends Schema<InferUnion<
     // (undocumented)
     readonly _options: T;
 }
+
+// @public
+export interface ValidationContext extends GenContext {
+    // (undocumented)
+    readonly check: (node: SchemaNode, value: unknown, path: readonly (string | number)[], issues: Issue[], root: unknown, parent: Readonly<Record<string, unknown>> | undefined) => unknown;
+    // (undocumented)
+    readonly describe: (node: SchemaNode) => string;
+    // (undocumented)
+    readonly isDeferred: (node: SchemaNode) => boolean;
+    // (undocumented)
+    readonly issues: Issue[];
+    // (undocumented)
+    readonly path: readonly (string | number)[];
+}
+
+// @public
+export type WalkPath = readonly (string | number)[];
 
 // @public
 export type WeightedDistribution = {

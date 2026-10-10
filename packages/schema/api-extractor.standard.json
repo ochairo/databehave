@@ -1,0 +1,5 @@
+{
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/standard.d.ts",
+  "apiReport": { "reportFileName": "schema-standard.api.md" }
+}

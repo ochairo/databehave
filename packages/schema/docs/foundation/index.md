@@ -30,8 +30,9 @@ Cross-links to types covered elsewhere:
   for navigation.
 - The IR-shape types that plugin authors consume — `Schema<T>`,
   `Modifiers`, `SchemaNode`, `Axes` — remain in
-  [extending.md](../extending.md) until the plugin-author refresh
-  lands.
+  [extending.md](../extending.md). `SchemaNode` is open to registered kinds;
+  `StandardSchemaNode` describes the built-in union. Runtime, descriptor and
+  serialization contracts are documented there as well.
 
 Source:
 [`src/foundation/`](../../src/foundation/) (`axes.ts`, `errors.ts`,

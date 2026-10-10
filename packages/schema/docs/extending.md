@@ -1,331 +1,151 @@
-# Extending databehave
+# Schema plugins
 
-databehave ships **no** CLI, OpenAPI ingestion, zod adapter, GUI, or
-HTTP layer. These belong in *external* packages. This document is
-the contract those packages should rely on.
-
-For SemVer guarantees on every symbol named below see
-[stability.md](./stability.md).
-
-## What databehave promises (and what it does not)
-
-| Promise | Detail |
-| --- | --- |
-| Stable IR shape | `SchemaNode`, `Modifiers`, `Axes` are part of the SemVer contract. |
-| Stable extension API | `walkSchema`, `fromIR`, `mulberry32`, `rngFromString`, `seedFromString`. |
-| Determinism | Identical `(seed, input)` → identical output across Node versions in the support matrix. |
-| Zero runtime deps | We will not add a dependency just to enable an extension. |
-
-| **Not** promised | |
-| --- | --- |
-| Builder class identity | `ObjectSchema`, `NumberSchema`, etc. may grow methods or be reorganised. **Do not subclass them.** |
-| Internal helpers (anything not in `index.ts` or `@databehave/schema/internal`) | May change in any release. |
-| Specific output of `mock()` for a given seed | We try not to break it, but engine fixes may shift values. Use snapshots responsibly. |
-
-## Extension-author imports {#extension-imports}
-
-The extensibility surface ships from a single deep entry point:
-
-- **`@databehave/schema/internal`** — `walkSchema`, `fromIR`,
-  `SchemaVisitor`, `WalkPath`, `mulberry32`, `rngFromString`,
-  `seedFromString`, `Rng`, plus `serializeSchema`,
-  `deserializeSchema`, `IR_VERSION`, `SchemaEnvelope`. Extension code
-  must import from here; the package root carries the user-facing
-  DSL only.
+Compose a synchronous runtime with explicit, instance-local registrations:
 
 ```ts
-import { walkSchema, fromIR } from '@databehave/schema/internal'
-```
+import { createSchemaRuntime } from '@databehave/schema/runtime'
+import { standardKinds, standardBehaviors } from '@databehave/schema/standard'
+import { obj, arr } from '@databehave/schema'
 
-Source:
-[`src/internal.ts`](../src/internal.ts).
-
-## The two extension points
-
-### `walkSchema(node, visitor)` — read-only traversal {#walkschema}
-
-Use this for **codegen**: OpenAPI, JSON Schema, SQL DDL,
-documentation, TypeScript types from runtime IR, etc.
-
-```ts
-import { walkSchema, type Schema, type SchemaNode } from '@databehave/schema/internal'
-
-export const toJsonSchema = (schema: Schema): unknown => {
-  const stack: unknown[] = []
-
-  walkSchema(schema, {
-    enter(node, path) {
-      // Pre-order: stash a partial fragment for this node.
-      stack.push(scaffoldFor(node))
-    },
-    leave(node, path) {
-      // Post-order: fold the top-of-stack into its parent.
-      const built = stack.pop()
-      attachToParent(stack, node, path, built)
-    },
-  })
-
-  return stack[0]
-}
-```
-
-`walkSchema` accepts either a `Schema` builder *or* a raw
-`SchemaNode` (for extensions that synthesise IR programmatically). It
-returns `void` — the visitor is the side-channel.
-
-Source:
-[`src/foundation/walk.ts:46-90`](../src/foundation/walk.ts).
-
-### `fromIR(node)` — reconstruct a builder {#fromir}
-
-Useful when your extension produces IR programmatically (e.g. parsing
-an OpenAPI file) and wants to hand back a typed `Schema` to the
-user:
-
-```ts
-import { fromIR, type SchemaNode } from '@databehave/schema/internal'
-
-const node: SchemaNode = parseOpenApi(spec)
-const schema = fromIR(node)        // Schema<unknown>
-// The extension can cast to a precise type if it knows the shape:
-//   const schema = fromIR(node) as Schema<MyType>
-```
-
-Modifiers (`nullable`, `optional`, `default`, `describe`, axes) are
-preserved through the round-trip via the public
-[`Schema._applyAxes`](#schema-base) helper.
-
-Source:
-[`src/foundation/walk.ts:96-162`](../src/foundation/walk.ts).
-
-## Extension-author API reference
-
-The four types below are the surface that extension code consumes.
-Each is part of the SemVer contract under
-[stability.md#extension-contract-ir](./stability.md#extension-contract-ir).
-
-### `Schema` base {#schema-base}
-
-```ts
-class Schema<out T = unknown> {
-  declare readonly _type: T          // phantom — compile-time only
-  readonly _node: SchemaNode         // serialisable IR
-  // modifiers + axes return a new builder; Schema itself is immutable
-  nullable():  Schema<T | null>
-  optional():  Schema<T | undefined>
-  default(v: T): Schema<T>
-  describe(text: string): this
-  // …axis builders (.weighted, .normal, .typically, .occasionally,
-  // .eventually, .derivedFrom, .invariant, .in)…
-  /** Public so `fromIR` can replay a complete `Axes` record without casts. */
-  _applyAxes(axes: Axes): this
-}
-```
-
-`Schema<T>` is the abstract builder every concrete schema kind
-extends (`ObjectSchema`, `NumberSchema`, …). Extension authors must
-**not** subclass `Schema` — the subclass identities are an
-implementation detail. The supported pattern is to construct IR (or
-compose existing builders) and call [`fromIR`](#fromir).
-
-`_node` and `_applyAxes` are the only members of `Schema` you should
-touch from extension code. `_type` is a phantom marker carried only at
-compile time; it has no runtime representation.
-
-```ts
-import { obj, str, type Schema, type SchemaNode } from '@databehave/schema'
-
-const ir: SchemaNode = obj({ id: str() })._node
-// Hand the IR to a codegen tool, then later round-trip it back:
-//   const rebuilt: Schema<unknown> = fromIR(ir)
-```
-
-Source:
-[`src/foundation/types.ts:16-119`](../src/foundation/types.ts).
-
-### `SchemaVisitor` {#schemavisitor}
-
-```ts
-type SchemaVisitor = {
-  readonly enter?: (node: SchemaNode, path: WalkPath) => void | boolean
-  readonly leave?: (node: SchemaNode, path: WalkPath) => void
-}
-```
-
-Visitor contract for [`walkSchema`](#walkschema):
-
-- `enter(node, path)` runs **before** descending into children.
-  Return literal `false` to skip the subtree (any other return —
-  including `undefined`, `true`, or no `return` — descends).
-- `leave(node, path)` runs **after** all children have been
-  visited.
-- Both callbacks are optional. A visitor with neither is a no-op
-  full-tree walk.
-
-```ts
-import { walkSchema, type SchemaVisitor } from '@databehave/schema/internal'
-
-const collectStrings: SchemaVisitor = {
-  enter(node, path) {
-    if (node.kind === 'string') {
-      console.log('string at', path.join('/'), 'min=', node.min)
-    }
-  },
-}
-
-walkSchema(mySchema, collectStrings)
-```
-
-Visitors may close over their own state (a stack, a builder, a map);
-the walker itself never mutates the visitor. Treat the `node`
-argument as immutable — do not write through it.
-
-Source:
-[`src/foundation/walk.ts:36-42`](../src/foundation/walk.ts).
-
-### `WalkPath` {#walkpath}
-
-```ts
-type WalkPath = readonly (string | number)[]
-```
-
-JSON-pointer-style location of the current node in the schema tree,
-passed to every `enter` / `leave` callback. The empty path `[]`
-means "the root". The walker emits four step kinds:
-
-| Step | Emitted by | Example |
-| --- | --- | --- |
-| Object key (`string`) | `obj({ ... })` | `['items']` |
-| Array element (`'[]'`) | `arr(...)` | `['items', '[]']` |
-| Tuple index (`number`) | `tuple(...)` | `[0]`, `[1]` |
-| Union/discriminated branch (`` `\|i` ``) | `union(...)`, `discriminated(...)` | `['kind', '\|0']` |
-
-```ts
-import { obj, arr, str } from '@databehave/schema'
-import { walkSchema } from '@databehave/schema/internal'
-
-walkSchema(obj({ tags: arr(str()) }), {
-  enter(_node, path) { console.log(path) }
+const runtime = createSchemaRuntime({
+  kinds: [...standardKinds, money],
+  behaviors: [...standardBehaviors, rounding],
 })
-// []
-// ['tags']
-// ['tags', '[]']
+const order = obj({ prices: arr(rounding.apply(money.schema({ ceiling: 1000 }), 10)) })
+const value = runtime.mock(order, { seed: 'order-1' })
+runtime.parse(order, value)
 ```
 
-Source:
-[`src/foundation/walk.ts:34`](../src/foundation/walk.ts).
+`money` and `rounding` above are descriptors authored with `defineKind` and `defineBehavior`.
+The executable public-contract example is `test/runtime/plugins.test.ts`. It implements a USD money kind,
+rounding behavior, nested arrays/objects, traversal, validation, replay, and JSON round-trip.
+See also the [runnable schema example](../../../examples/schema.mjs) and
+[application plugin guide](../../../docs/plugins.md).
 
-### `Rng` {#rng}
+A kind descriptor owns `checkMetadata`, `generate`, `validate`, `children`, and `rebuild`. Its `id` is the node's
+`kind`, and its positive integer `version` identifies the contract. `checkMetadata(unknown)` must validate its
+own metadata and return a node. The runtime validates recursive children and registered behavior metadata.
+`children` exposes path segments; `rebuild` receives validated or reconstructed children and preserves all metadata.
+An optional `describe` callback supplies diagnostic text. Composite implementations recurse through the supplied
+context's `generate`/`check`, retaining the selected runtime. They can use `isDeferred` to process derived fields
+once their siblings are available. Standard primitives and composites follow this same protocol.
+
+`defineKind<Value, Node>(definition)` produces a descriptor with `.schema(metadata): Schema<Value>`. Use a
+specific node type such as `{ kind: 'money'; ceiling: number; mods?: Modifiers }`. The builder requires its typed
+metadata, infers `Value`, and composes with existing `obj`, `arr`, `tuple`, and `union` builders. No internal builder
+subclass or global registration is needed.
+
+`defineBehavior<Metadata>(definition)` produces a descriptor with `.apply(schema, metadata)`, preserving the schema's
+inferred type. It stores metadata under `mods.behaviors[id]`. Each behavior owns applicability, metadata validation,
+merge semantics, generation and validation middleware, and serialization. `runtime.withBehavior(schema, id, unknown)`
+is the dynamically validated alternative. A descriptor can also implement `read` and `write` for its own metadata
+carrier, as the standard modifier and axis descriptors do.
+
+Generation phases are `modifier`, `derived`, `cadence`, `invariant`, and `sample`. Descriptor composition order is
+stable within each phase. The standard group places `eventually` before `occasionally`, then wraps domain,
+distribution and kind sampling in bounded invariant retries. Modifier, derived and cadence short circuits bypass
+invariants. Validation is a separate middleware operation and enforces invariants on both primitive and composite
+values; this corrects the previous omission of primitive invariant checks.
+
+Generation middleware can call `next({ candidates, fallback })` to supply a `SamplingContext` to downstream
+behaviors. They receive it as `context.sampling`; terminal generation calls its `fallback` instead of the kind.
+Calling `next()` preserves the scope received by the caller. Each override belongs only to that continuation call:
+repeated calls do not inherit an earlier override, and `context.generate` always starts a fresh node scope.
+The standard domain behavior resolves candidates and supplies uniform fallback sampling. The distribution behavior
+alone owns weighting: it filters weights against scoped candidates and delegates to fallback if no weight can be
+selected. Domain does not inspect distribution metadata, so replacing distribution works for domain schemas too.
+Composition order within the sample phase remains explicit; distribution must follow domain to receive its candidates.
+
+The helpers snapshot definition identities and callback references when called; the runtime does the same for public
+descriptor fields during construction and seals its registries. Class prototype methods are supported, and callbacks
+retain their original receiver, including private fields. Mutating identities or replacing callbacks later does not
+replace a registered contract. Receiver state and closure state remain extension-owned and are not deeply frozen.
+Duplicate IDs, invalid versions,
+and missing handlers fail synchronously. Missing registrations or invalid metadata fail before schema execution.
+Plugin functions are trusted executable code: closure state and nondeterministic I/O remain the author's responsibility.
+Replace a standard descriptor by omitting it from the array and supplying another with the same contract identity.
+There is no asynchronous startup, module-side-effect registration, live replacement, HTTP, or application host requirement.
+
+`walkSchema`, `fromIR`, `serializeSchema`, and `deserializeSchema` are runtime methods. IR envelope version 2 records
+all required kind and behavior contract versions; deserialization starts from `unknown`, validates the complete tree,
+and rejects missing, extra, duplicate, or incompatible contracts. Version 1 envelopes require explicit migration;
+the runtime never rewrites persisted files. Serialization rejects closures, cycles and other data that JSON would lose,
+including closure-bearing custom behavior metadata. Keep executable callbacks in process and use `runtime.replay`.
+
+Seeded results are stable for the same schema, options, deterministic plugin implementations/versions and fixed runtime conditions.
+Trace entries and replay capture the participating contracts. `runtime.mockDataset` uses the same selected generator
+for every row, including custom nested kinds. Root `mock`, `parse`, `safeParse`, and the existing internal traversal
+helpers are convenience functions bound to the immutable `standardRuntime` composition.
+
+`runtime.replay` snapshots schema metadata and JSON input, retaining callbacks and the selected runtime in process.
+It cannot freeze mutable callback/receiver state or make nondeterministic plugins reproducible. Contract IDs and
+versions record dependencies, not hashes of implementations. See the [stability contract](stability.md).
+
+## Minimal external kind and behavior
+
+This example models money as integer cents and adds a serializable rounding step. Both definitions use public APIs:
 
 ```ts
-type Rng = {
-  next():                         number   // ∈ [0, 1)
-  int(min: number, max: number):  number   // inclusive both ends
-  pick<T>(items: readonly T[]):   T        // uniform
-}
+import { defineKind, defineBehavior, type Modifiers } from '@databehave/schema/runtime'
+
+/** Money metadata; common modifiers are validated by the runtime. */
+type MoneyNode = { kind: 'money'; ceiling: number; mods?: Modifiers }
+const money = defineKind<number, MoneyNode>({
+  id: 'money', version: 1,
+  checkMetadata(input) {
+    if (input === null || typeof input !== 'object' || !('kind' in input) || input.kind !== 'money'
+      || !('ceiling' in input) || typeof input.ceiling !== 'number'
+      || !Number.isSafeInteger(input.ceiling) || input.ceiling < 1) throw new TypeError('invalid money metadata')
+    return input as MoneyNode
+  },
+  generate: (node, ctx) => ctx.leafRng().int(0, node.ceiling),
+  validate(node, value, ctx) {
+    if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > node.ceiling)
+      ctx.issues.push({ path: ctx.path, code: 'money.invalid', message: 'expected bounded integer cents' })
+    return value
+  },
+  children: () => [],
+  rebuild: (node) => ({ ...node }),
+})
+const rounding = defineBehavior<number>({
+  id: 'rounding', version: 1, phase: 'sample',
+  checkMetadata(value) {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 1) throw new TypeError('invalid step')
+    return value
+  },
+  appliesTo: (node) => node.kind === 'money',
+  merge: (_previous, next) => next,
+  generate(step, _node, _ctx, next) {
+    const value = next()
+    if (typeof value !== 'number') throw new TypeError('money generator must return a number')
+    return Math.floor(value / step) * step
+  },
+  validate(step, _node, value, ctx, next) {
+    if (typeof value === 'number' && value % step !== 0)
+      ctx.issues.push({ path: ctx.path, code: 'rounding.invalid', message: 'expected a multiple of step' })
+    return next()
+  },
+  serialize: (step) => step,
+})
 ```
 
-The deterministic PRNG interface. Returned by
-[`mulberry32(seed)`](#mulberry32) and
-[`rngFromString(s)`](#rngfromstring). Three runtime guard rails are
-part of the SemVer contract:
+Use these definitions in the composition example above. `Infer<typeof order>` contains numeric prices; a custom
+kind can instead return structured data, as the tested USD example does.
 
-- `int(min, max)` throws `RangeError` if either bound is non-finite
-  (`NaN`, `±Infinity`).
-- `int(min, max)` throws `RangeError` if `min > max`.
-- `pick(items)` throws `RangeError` when `items.length === 0`.
+## Optional application composition
+
+Only applications using the host need the optional `@databehave/core` peer:
 
 ```ts
-import { rngFromString } from '@databehave/schema/internal'
+import { createHost } from '@databehave/core'
+import { schemaPlugin, schemaCapability } from '@databehave/schema/plugin'
 
-const rng = rngFromString('plugin|examples')
-rng.next()                    // e.g. 0.7212347...
-rng.int(1, 6)                 // e.g. 4
-rng.pick(['A', 'B', 'C'])     // e.g. 'B'
-
-rng.int(NaN, 10)              // RangeError: rng.int requires finite bounds, …
-rng.int(10, 5)                // RangeError: rng.int: min (10) > max (5)
-rng.pick([])                  // RangeError: rng.pick: empty array
+const app = createHost({ plugins: [schemaPlugin({ kinds: standardKinds, behaviors: standardBehaviors })] })
+await app.start()
+const schemaRuntime = app.get(schemaCapability)
+// Consume schemaRuntime in application services or other declared-capability plugins.
+await app.close()
 ```
 
-Source:
-[`src/foundation/prng.ts:11-19`](../src/foundation/prng.ts) (interface),
-[`src/foundation/prng.ts:25-55`](../src/foundation/prng.ts) (implementation +
-guard rails).
-
-## Determinism helpers for extensions
-
-If your extension samples data on the side (e.g. example values for
-documentation), use databehave's PRNG so behaviour matches `mock()`.
-
-### `mulberry32` {#mulberry32}
-
-```ts
-const mulberry32: (seed: number) => Rng
-```
-
-Tiny, fast, deterministic 32-bit PRNG. Identical seed → identical
-sequence on every machine. Period ≈ 2³². Pair with
-[`seedFromString`](#seedfromstring) for string-seeded sub-RNGs:
-
-```ts
-import { mulberry32, seedFromString } from '@databehave/schema/internal'
-
-const sub = mulberry32(seedFromString(`${parentSeed}|child:${i}`))
-```
-
-Source:
-[`src/foundation/prng.ts:25-55`](../src/foundation/prng.ts).
-
-### `rngFromString` {#rngfromstring}
-
-```ts
-const rngFromString: (s: string) => Rng
-```
-
-Convenience wrapper: `mulberry32(seedFromString(s))`.
-
-```ts
-import { rngFromString } from '@databehave/schema/internal'
-
-const rng = rngFromString('my-plugin|examples')
-rng.int(0, 100)         // same number on every machine
-rng.pick(['A','B','C']) // same pick on every machine
-```
-
-Source:
-[`src/foundation/prng.ts:69-71`](../src/foundation/prng.ts).
-
-### `seedFromString` {#seedfromstring}
-
-```ts
-const seedFromString: (s: string) => number
-```
-
-FNV-1a 32-bit hash of an arbitrary string. Use to derive a numeric
-seed for `mulberry32` from a domain-specific identifier (dataset
-name, extension id, row identity, …):
-
-```ts
-import { mulberry32, seedFromString } from '@databehave/schema/internal'
-
-const sub = mulberry32(seedFromString(`my-plugin|row:${rowId}`))
-```
-
-Source:
-[`src/foundation/prng.ts:58-66`](../src/foundation/prng.ts).
-
-## What you should *not* do
-
-- **Do not subclass `Schema`, `ObjectSchema`, etc.** Subclasses are
-  an internal implementation detail of `@databehave/schema`; external
-  code composes via `fromIR` + existing builders instead.
-- **Do not import from `@databehave/schema/dist/...`** or any deep
-  path other than `@databehave/schema/internal`. Only the top-level
-  and explicit `internal` entry points are part of the public API.
-- **Do not call `Math.random()` or `Date.now()`** inside
-  `derivedFrom` or invariant callbacks. They break determinism and
-  will fail [`expectStable`](./generator/trace-replay.md#expectstable).
-- **Do not mutate IR nodes returned by `walkSchema`.** Treat them
-  as immutable. If you need a modified copy, use the builders +
-  `fromIR`.
+The adapter creates a distinct runtime for each host during synchronous setup. It adds no network listener,
+resource acquisition, or mandatory application lifecycle to standalone schema use.

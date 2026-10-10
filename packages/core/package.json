@@ -1,0 +1,45 @@
+{
+  "name": "@databehave/core",
+  "version": "0.1.0",
+  "description": "Instance-local typed plugin composition and application lifecycle.",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ochairo/databehave.git",
+    "directory": "packages/core"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": "^24.0.0 || ^26.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "build:test": "tsc -p tsconfig.test.json",
+    "typecheck": "tsc --noEmit",
+    "pretest": "pnpm build:test",
+    "test": "node --test dist-test/test/*.test.js",
+    "clean": "rm -rf dist dist-test"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3",
+    "@types/node": "25.9.1"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

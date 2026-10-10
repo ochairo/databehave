@@ -207,13 +207,10 @@ Error
         └── SchemaConflictError (schema is unsatisfiable / misused)
 ```
 
-All errors thrown by databehave itself extend `DataBehaveError`.
-Callbacks supplied by the user (e.g. inside
-[`.derivedFrom`](../schema/bound-operators.md#derivedfrom) or
-[`.invariant`](../schema/bound-operators.md#invariant)) that throw
-arbitrary `Error`s are *not* wrapped — they surface as the original
-error class. Catch `DataBehaveError` to filter library-originated
-failures from generic errors.
+`DataBehaveError` covers conformance and schema-conflict failures. Registry, metadata and IR validation can
+throw `TypeError`; invalid sampling probabilities can throw `RangeError`. Standard derived/invariant callbacks
+that throw during validation become issues; callback errors during generation propagate. External descriptors
+own their error behavior. See [catching library failures](../errors.md#catching-library-failures) for the full contract.
 
 Source:
 [`src/foundation/errors.ts`](../../src/foundation/errors.ts).
@@ -294,7 +291,7 @@ Thrown in two situations:
 2. **Runtime** — an axis combination is unsatisfiable (e.g.
    `int().min(10).max(5)`, an invariant rejects every sample for
    [`MAX_ATTEMPTS`](../generator/sampling.md#rejection-sampling)
-   in a row, a derived value lands outside its declared domain, or
+   in a row, or
    a [`mockDataset` collision retry budget](../dataset/mock-dataset.md#collisions)
    is exhausted).
 
@@ -327,12 +324,11 @@ A single per-field failure inside a
 [`ConformError`](#conformerror). `path` is JSON-pointer-style
 (string keys for object fields, numeric indices for arrays).
 `code` is a stable, machine-matchable identifier drawn from the
-closed [`IssueCode`](../../src/foundation/errors.ts) catalog — use
+standard [`IssueCode`](../../src/foundation/errors.ts) catalog or a plugin-defined string — use
 it (together with `path`) for programmatic assertions and runtime
-branching. `expected` is a human-readable description of the rule
-that failed. `received` carries the offending value when it is safe
-to echo (the validator omits it for axis violations whose payload
-is already implied by `expected`).
+branching. Plugins should namespace their codes and document their compatibility contract.
+`expected` is a human-readable description of the rule
+that failed. `received` may carry the offending value; avoid logging it when inputs contain sensitive data.
 
 > **`Issue.message` is diagnostic-only.** Message wording is **not**
 > part of the SemVer contract and may change in any release. See

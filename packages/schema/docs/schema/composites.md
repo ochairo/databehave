@@ -28,7 +28,7 @@ are rejected at build time with `RangeError` to prevent
 prototype-pollution patterns from leaking into generated objects:
 
 ```ts
-obj({ __proto__: str() })
+obj({ ['__proto__']: str() })
 // RangeError: obj(): field name "__proto__" is forbidden ...
 ```
 

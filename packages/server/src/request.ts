@@ -30,21 +30,22 @@ const bodyCache = new WeakMap<globalThis.Request, Promise<string>>()
 export const buildRequest = (
   req: globalThis.Request,
   params: Readonly<Record<string, string>> = {},
+  effectiveMethod?: ObservedMethod,
 ): MockRequest => {
   const url = new URL(req.url)
   const method = req.method.toLowerCase() as ObservedMethod
 
-  const queryAll: Record<string, string[]> = {}
+  const queryAll: Record<string, string[]> = Object.create(null) as Record<string, string[]>
   for (const [k, v] of url.searchParams.entries()) {
     ;(queryAll[k] ??= []).push(v)
   }
-  const query: Record<string, string> = {}
+  const query: Record<string, string> = Object.create(null) as Record<string, string>
   for (const [k, vs] of Object.entries(queryAll)) {
     const last = vs[vs.length - 1]
     if (last !== undefined) query[k] = last
   }
 
-  const headers: Record<string, string> = {}
+  const headers: Record<string, string> = Object.create(null) as Record<string, string>
   req.headers.forEach((value, key) => {
     headers[key.toLowerCase()] = value
   })
@@ -59,6 +60,8 @@ export const buildRequest = (
 
   return {
     method,
+    effectiveMethod: effectiveMethod ?? method,
+    signal: req.signal,
     url: req.url,
     path: url.pathname,
     query,

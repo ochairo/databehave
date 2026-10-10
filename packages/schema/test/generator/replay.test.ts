@@ -27,6 +27,7 @@ describe('replay()', () => {
     const gen = replay(int(), { seed: 'fixed' })
     assert.ok(Object.isFrozen(gen.options))
     assert.equal(gen.options.seed, 'fixed')
+    assert.ok(gen.contracts.kinds.some((contract) => contract.id === 'number' && contract.version === 1))
   })
 
   it('defaults options to {} when omitted', () => {

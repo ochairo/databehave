@@ -32,8 +32,8 @@ export class DecimalSchema extends Schema<string> {
 /**
  * Declare a fixed-point decimal column.
  *
- * @param precision total significant digits (1..38 for Snowflake)
- * @param scale     digits after the decimal point (0..precision)
+ * @param precision - total significant digits (1..38 for Snowflake)
+ * @param scale - digits after the decimal point (0..precision)
  */
 export const decimal = (precision: number, scale: number): DecimalSchema => {
   if (!Number.isInteger(precision) || precision < 1 || precision > 38) {

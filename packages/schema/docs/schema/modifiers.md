@@ -2,7 +2,7 @@
 
 Four methods every `Schema<T>` carries — independent of the underlying
 kind. Each returns a fresh schema whose IR has the modifier flag set
-under `_node.mods`; all four survive `fromIR` round-trips.
+under `_node.mods`; all four survive `runtime.fromIR` round-trips when standard behaviors are registered.
 
 These narrow / annotate the value but do not bind a sampling strategy;
 for the kind-specific population operators see
@@ -60,9 +60,8 @@ const retries = int().default(3)
 may short-circuit to `value` instead of sampling; the exact probability
 is a generator concern (see
 [`../generator/sampling.md#mockoptionsmodifierprobs`](../generator/sampling.md#mockoptionsmodifierprobs)
-for the `MockOptions.modifierProbs` knob — out of scope for this slice). The
-validator does not inject the default — `parse(undefined)` still
-fails — `default` is a generator hint, not a coercion.
+for the `MockOptions.modifierProbs` option). Standard validation substitutes the default for `undefined`.
+If the field is also optional, optional handling runs first and returns `undefined`.
 
 Source:
 [`src/foundation/types.ts`](../../src/foundation/types.ts).
@@ -82,7 +81,7 @@ chains.
 
 The string is free-form metadata. Plugins (OpenAPI ingestion, JSON
 Schema export) read it through
-[`walkSchema`](../extending.md#walkschemanode-visitor--read-only-traversal)
+[`runtime.walkSchema`](../extending.md)
 to populate their own `description` field.
 
 Source:

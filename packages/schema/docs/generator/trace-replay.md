@@ -9,8 +9,9 @@ regression testing:
   bind a fixed `(seed, input)` pair and assert that two calls yield
   deep-equal output.
 
-Both build on top of `mock(...)`'s deterministic contract; neither
-introduces side effects of its own.
+Root helpers use the standard runtime. Custom compositions use `runtime.mock` and `runtime.replay`;
+tracing works through the same `options.trace` collector. Plugin callbacks may have side effects;
+these helpers do not isolate them or make nondeterministic callbacks reproducible.
 
 Source:
 [`src/generator/trace.ts`](../../src/generator/trace.ts),
@@ -24,7 +25,7 @@ Source:
 import { createTrace, mock, obj, int, str } from '@databehave/schema'
 
 const Doc = obj({
-  id:   int().min(1),
+  id:   int().min(1).max(99),
   slug: str().pattern(/^[a-z]+$/),
 }).invariant(d => (d as { id: number }).id < 100)
 
@@ -42,8 +43,8 @@ Signature:
 const createTrace: () => TraceCollector
 ```
 
-The trace records one entry per leaf-or-composite decision the
-generator makes — useful for verifying that a `.weighted` actually
+The runtime records the final emitted decision for each node generation invocation. Retried children can add
+multiple entries at the same path — useful for verifying that a `.weighted` actually
 fires, that `eventually` lands on the expected indices, or that an
 invariant is exhausting its budget.
 
@@ -88,6 +89,10 @@ type TraceEntry = {
   readonly axis:      TraceAxis
   readonly attempts?: number  // populated when invariants ran
   readonly note?:     string  // free-form annotation (rare; reserved)
+  readonly contracts?: {
+    readonly kind: SchemaContract
+    readonly behaviors: readonly SchemaContract[]
+  }
 }
 ```
 
@@ -100,6 +105,7 @@ Each entry carries:
   `'invariant-fail'`; counts the rejection-sample iterations.
 - `note` — reserved for future per-axis annotations (currently unused
   by the engine).
+- `contracts` — the selected kind and active behavior identities, each `{ id, version }`, attached by the runtime.
 
 Source:
 [`src/generator/trace.ts`](../../src/generator/trace.ts) (`TraceEntry`).
@@ -139,9 +145,10 @@ import { replay, obj, str } from '@databehave/schema'
 const make = replay(obj({ name: str() }), { seed: 'pinned' })
 const a = make()
 const b = make()
-// a deep-equals b — guaranteed across calls and across processes.
+// a deep-equals b with deterministic callbacks and fixed runtime conditions.
 
 make.options  // Readonly<MockOptions> — deep-frozen copy
+make.contracts // required kind/behavior identities
 ```
 
 Signature:
@@ -152,17 +159,20 @@ const replay: <S extends Schema>(schema: S, options?: MockOptions) => Replay<S>
 type Replay<S extends Schema> = {
   (): Infer<S>
   readonly options: Readonly<MockOptions>
+  readonly contracts: SchemaEnvelope['contracts']
 }
 ```
 
-`replay(...)` deep-freezes a copy of the supplied options (so callers
-cannot mutate `options.input` through nested references later) and
-returns a callable bound to those frozen options. Calling it twice
-always yields deep-equal values; the `.options` accessor exposes the
-frozen view for assertions.
+`replay(...)` snapshots and freezes schema metadata, modifier probabilities and JSON-compatible input, then binds
+the selected runtime. `.options` and `.contracts` expose that evidence for assertions. Callbacks, the PRNG factory
+and trace collector remain executable references; mutable closure/receiver state is not frozen. Keep those
+implementations deterministic. Replay is an in-process callable, not a portable serialization format, and cannot
+preserve an old implementation across releases. Store expected values separately to detect output changes.
 
 Source:
 [`src/generator/replay.ts`](../../src/generator/replay.ts).
+
+<a id="expectstable"></a>
 
 ## `expectStable(schema, options)`
 

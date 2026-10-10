@@ -6,8 +6,11 @@ const SUPPORTED_METHODS: ReadonlySet<Method> = new Set<Method>([
   'put',
   'delete',
   'patch',
+  'head',
+  'options',
 ])
 
+/** Parsed method and absolute path. */
 export interface ParsedRouteKey {
   readonly method: Method
   readonly path: string
@@ -23,6 +26,7 @@ export type PatternSegment =
   | { readonly kind: 'static'; readonly value: string }
   | { readonly kind: 'param'; readonly name: string }
 
+/** Compiled path segments used by the route matcher. */
 export interface RoutePattern {
   /** Original path string as declared (post-trim). */
   readonly path: string
@@ -125,10 +129,11 @@ export const matchPattern = (
 ): Record<string, string> | null => {
   const reqSegments = requestPath.slice(1).split('/')
   if (reqSegments.length !== pattern.segments.length) return null
-  const params: Record<string, string> = {}
+  const params: Record<string, string> = Object.create(null) as Record<string, string>
   for (let i = 0; i < pattern.segments.length; i++) {
-    const seg = pattern.segments[i]!
-    const part = reqSegments[i]!
+    const seg = pattern.segments[i]
+    const part = reqSegments[i]
+    if (seg === undefined || part === undefined) return null
     if (seg.kind === 'static') {
       if (seg.value !== part) return null
     } else {

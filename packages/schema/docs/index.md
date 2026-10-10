@@ -20,9 +20,11 @@ Reading order by audience:
 
 - [design.md](./design.md) — architecture, axis priority, the determinism model.
 - [recipes.md](./recipes.md) — practical patterns: FK, cadence, lookup domains.
-- [extending.md](./extending.md) — plugin author guide (IR walker, `fromIR`, PRNG).
+- [extending.md](./extending.md) — kind/behavior descriptors, runtime composition, traversal and IR version 2.
 - [stability.md](./stability.md) — public-surface lock, SemVer triggers, contract surfaces.
 
 **Project**
 
+- [Workspace documentation](../../../docs/index.md) and [application plugins](../../../docs/plugins.md).
+- [Runnable schema example](../../../examples/schema.mjs).
 - [axes.md](./axes.md) — historical per-axis reference; new readers should prefer [schema/bound-operators.md](./schema/bound-operators.md).

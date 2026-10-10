@@ -1,0 +1,17 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/dist-test
+**/coverage
+artifacts
+test-results
+**/.env
+**/.env.*
+**/*.key
+**/*.pem
+**/id_*
+.pnpm-store
+.aws
+.codex
+.agents

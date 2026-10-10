@@ -16,6 +16,7 @@ import * as Root from '../src/index.js'
 import * as Internal from '../src/internal.js'
 
 const ROOT_EXPECTED: readonly string[] = [
+  'createSchemaRuntime', 'defineKind', 'defineBehavior', 'standardKinds', 'standardBehaviors', 'standardRuntime', 'IR_VERSION',
   // schema DSL — primitives
   'BooleanSchema',
   'IntSchema',

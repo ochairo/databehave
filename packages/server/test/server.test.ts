@@ -1,24 +1,12 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import { createServer, defineConfig } from '../src/index.js'
-import { handleRuntimeServerError } from '../src/server.js'
-import type {
-  Config,
-  ListenHandle,
-  MockRequest,
-  MockResponse,
-} from '../src/index.js'
+import { createHttpFixture, type FixtureListener, type HttpFixtureOptions } from './support/http-fixture.js'
+import { handleRuntimeServerError } from '../src/node-http.js'
+import type { MockRequest, MockResponse } from '../src/index.js'
 
-describe('defineConfig', () => {
-  it('returns the same object', () => {
-    const cfg = { routes: {} }
-    expect(defineConfig(cfg)).toBe(cfg)
-  })
-})
-
-describe('createServer', () => {
+describe('createHttpFixture', () => {
   it('returns 404 with a JSON envelope for an unmatched path', async () => {
-    const server = createServer({ routes: {} })
+    const server = createHttpFixture({ routes: {} })
     const res = await server.fetch(new Request('http://localhost/api/v1/nope'))
     expect(res.status).toBe(404)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
@@ -27,13 +15,11 @@ describe('createServer', () => {
   })
 
   it('dispatches a GET handler returning JSON', async () => {
-    const server = createServer(
-      defineConfig({
-        routes: {
-          'GET /api/v1/ping': () => ({ json: { ok: true } }),
-        },
-      }),
-    )
+    const server = createHttpFixture({
+      routes: {
+        'GET /api/v1/ping': () => ({ json: { ok: true } }),
+      },
+    })
     const res = await server.fetch(new Request('http://localhost/api/v1/ping'))
     expect(res.status).toBe(200)
     expect(res.headers.get('content-type')).toMatch(/application\/json/)
@@ -41,7 +27,7 @@ describe('createServer', () => {
   })
 
   it('exposes query parameters via req.query', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/echo-q': ({ query }) => ({ json: query }),
       },
@@ -53,7 +39,7 @@ describe('createServer', () => {
   })
 
   it('exposes every value via req.queryAll for repeated keys', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/echo-q': ({ query, queryAll }) => ({ json: { query, queryAll } }),
       },
@@ -65,7 +51,7 @@ describe('createServer', () => {
   })
 
   it('parses JSON request bodies via req.json()', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'POST /api/v1/echo': async ({ json }) => {
           const body = await json<{ value: number }>()
@@ -84,7 +70,7 @@ describe('createServer', () => {
   })
 
   it('shares one body read between json() and text() so handlers can call both', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'POST /api/v1/echo': async ({ json, text }) => {
           // text() first, then json() — second call must reuse cached body.
@@ -111,7 +97,7 @@ describe('createServer', () => {
   })
 
   it('honours status override', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'POST /api/v1/create': () => ({ json: { id: 1 }, status: 201 }),
       },
@@ -123,7 +109,7 @@ describe('createServer', () => {
   })
 
   it('supports text / empty body variants', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/txt': () => ({ text: 'hello' }),
         'DELETE /api/v1/x': () => ({ empty: true, status: 204 }),
@@ -141,7 +127,7 @@ describe('createServer', () => {
   })
 
   it('merges user headers over body-derived defaults', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/h': () => ({
           json: { ok: true },
@@ -154,7 +140,7 @@ describe('createServer', () => {
     expect(res.headers.get('content-type')).toBe('application/vnd.foo+json')
   })
 
-  it('throws at construction on duplicate dispatch keys', () => {
+  it('rejects duplicate dispatch keys during activation', async () => {
     // Two route keys collapse to the same `method path` after parsing
     // (trailing whitespace is trimmed from the path). Build the routes
     // map via `Object.fromEntries` so both keys survive — an object
@@ -162,12 +148,12 @@ describe('createServer', () => {
     const routes = Object.fromEntries([
       ['GET /api/v1/dup', () => ({ json: 1 })],
       ['GET /api/v1/dup ', () => ({ json: 2 })],
-    ]) as NonNullable<Config['routes']>
-    expect(() => createServer({ routes })).toThrow(/duplicate route/)
+    ]) as NonNullable<HttpFixtureOptions['routes']>
+    await expect(createHttpFixture({ routes }).start()).rejects.toThrow(/Duplicate HTTP route/)
   })
 
   it('awaits async handlers', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/slow': async () => {
           await new Promise((r) => setTimeout(r, 5))
@@ -180,9 +166,9 @@ describe('createServer', () => {
   })
 })
 
-describe('createServer (dynamic routes)', () => {
+describe('createHttpFixture (dynamic routes)', () => {
   it('matches a :param and exposes it via req.params', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /users/:id': ({ params }) => ({ json: { id: params.id } }),
       },
@@ -193,7 +179,7 @@ describe('createServer (dynamic routes)', () => {
 
   it('prefers a static route over a dynamic one with the same shape', async () => {
     // Declaration order is irrelevant — the static index wins on hit.
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /users/:id': () => ({ json: { kind: 'dynamic' } }),
         'GET /users/me': () => ({ json: { kind: 'static' } }),
@@ -206,7 +192,7 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('captures multiple :params in order', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /orgs/:org/repos/:repo': ({ params }) => ({
           json: { org: params.org, repo: params.repo },
@@ -218,7 +204,7 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('does not cross-match between methods', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /users/:id': ({ params }) => ({ json: { method: 'get', id: params.id } }),
       },
@@ -230,7 +216,7 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('URL-decodes params end-to-end', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /items/:name': ({ params }) => ({ json: params }),
       },
@@ -240,13 +226,13 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('serves html / raw body variants and 500s when no body variant is set', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /html': () => ({ html: '<h1>hi</h1>' }),
         'GET /raw': () => ({ raw: new Uint8Array([1, 2, 3]) }),
         // Empty object is not a valid `MockResponse` body variant — cast through
         // unknown to exercise the runtime guard in `buildResponse`.
-        'GET /missing': () => ({}) as unknown as MockResponse,
+        'GET /missing': () => ({}) as MockResponse,
       },
     })
 
@@ -265,7 +251,7 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('auto-serves HEAD by running the GET handler and stripping the body (RFC 7231)', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/x': () => ({ json: { ok: true, n: 42 } }),
       },
@@ -281,7 +267,7 @@ describe('createServer (dynamic routes)', () => {
   })
 
   it('HEAD for an unknown path still 404s', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: { 'GET /api/v1/x': () => ({ json: { ok: true } }) },
     })
     const res = await server.fetch(
@@ -295,7 +281,7 @@ describe('createServer (dynamic routes)', () => {
 describe('hooks.onRequest', () => {
   it('short-circuits the handler when it returns a response', async () => {
     let handlerCalled = false
-    const server = createServer({
+    const server = createHttpFixture({
       hooks: {
         onRequest: () => ({ json: { intercepted: true }, status: 418 }),
       },
@@ -314,7 +300,7 @@ describe('hooks.onRequest', () => {
 
   it('passes through when it returns void', async () => {
     const seen: Array<{ method: string; path: string }> = []
-    const server = createServer({
+    const server = createHttpFixture({
       hooks: {
         onRequest: (req: MockRequest) => {
           seen.push({ method: req.method, path: req.path })
@@ -332,7 +318,7 @@ describe('hooks.onRequest', () => {
 
 describe('hooks.onResponse', () => {
   it('can replace the handler response', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       hooks: {
         onResponse: (_req: MockRequest, res: MockResponse) =>
           ({ ...res, headers: { 'x-tag': 'hi' } }) satisfies MockResponse,
@@ -348,7 +334,7 @@ describe('hooks.onResponse', () => {
 
   it('runs even for 404 responses', async () => {
     let saw404 = false
-    const server = createServer({
+    const server = createHttpFixture({
       hooks: {
         onResponse: (_req, res) => {
           if (res.status === 404) saw404 = true
@@ -364,7 +350,7 @@ describe('hooks.onResponse', () => {
 
 describe('hooks.onError', () => {
   it('catches handler throws and lets the hook craft the response', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       hooks: {
         onError: (_req, err) => ({
           status: 502,
@@ -383,7 +369,7 @@ describe('hooks.onError', () => {
   })
 
   it('falls back to a 500 envelope when no hook is configured', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/boom': () => {
           throw new Error('kaboom')
@@ -402,8 +388,8 @@ describe('hooks.onError', () => {
  * then shut down. Previously lived in `listen.test.ts`; merged here
  * because `listen` is a method on `server.ts`, not its own module.
  */
-describe('createServer.listen', () => {
-  let handle: ListenHandle | null = null
+describe('createHttpFixture.listen', () => {
+  let handle: FixtureListener | null = null
 
   afterEach(async () => {
     if (handle) {
@@ -413,7 +399,7 @@ describe('createServer.listen', () => {
   })
 
   it('binds to an OS-assigned port and serves a real HTTP request', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/ping': () => ({ json: { ok: true } }),
         'GET /users/:id': ({ params }) => ({ json: { id: params.id } }),
@@ -436,7 +422,7 @@ describe('createServer.listen', () => {
   })
 
   it('forwards POST bodies to req.json()', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'POST /api/v1/echo': async ({ json }) => {
           const body = await json<{ value: number }>()
@@ -455,7 +441,7 @@ describe('createServer.listen', () => {
   })
 
   it('returns a generic 500 envelope for thrown handler errors over HTTP', async () => {
-    const server = createServer({
+    const server = createHttpFixture({
       routes: {
         'GET /api/v1/boom': () => {
           throw new Error('kaboom-internal-detail')
@@ -473,34 +459,26 @@ describe('createServer.listen', () => {
   })
 
   it('close() releases the port', async () => {
-    const server = createServer({ routes: {} })
+    const server = createHttpFixture({ routes: {} })
     const h = await server.listen({ port: 0 })
     const portBefore = h.port
     await h.close()
 
     // Re-binding to the same explicit port should now succeed.
-    handle = await server.listen({ port: portBefore })
+    handle = await createHttpFixture({ routes: {} }).listen({ port: portBefore })
     expect(handle.port).toBe(portBefore)
   })
 
   it('accepts `hooks.onServerError` and binds successfully', async () => {
-    // Behavioural integration: a runtime `'error'` on the underlying
-    // Node `http.Server` is hard to provoke cleanly without leaking a
-    // socket. We assert the contract that the option is accepted and
-    // the server still binds, then exercise the dispatch path
-    // separately via a regular request. Coverage of the hook branch
-    // is provided by the unit test in `loader`/`json-config` tiers
-    // when wired through config; here we only guard the typing and
-    // listen path don't reject a hook.
     const onServerError = vi.fn((_err: Error) => {})
-    const server = createServer({
+    const server = createHttpFixture({
       routes: { 'GET /api/v1/ok': () => ({ json: { ok: true } }) },
       hooks: { onServerError },
     })
     handle = await server.listen({ port: 0 })
     const res = await fetch(`http://127.0.0.1:${handle.port}/api/v1/ok`)
     expect(res.status).toBe(200)
-    // Hook must never fire on a normal request lifecycle.
+    // The reporter is reserved for listener errors.
     expect(onServerError).not.toHaveBeenCalled()
   })
 })
@@ -546,7 +524,7 @@ describe('handleRuntimeServerError', () => {
       // other way around (the user should see *their* bug surfaced
       // distinctly from the underlying server fault).
       expect(err).toHaveBeenCalledTimes(2)
-      expect(String(err.mock.calls[0]![0])).toMatch(/onServerError hook threw/)
+      expect(String(err.mock.calls[0]![0])).toMatch(/error reporter failed/)
       expect(String(err.mock.calls[1]![0])).toMatch(/server error/)
     } finally {
       err.mockRestore()

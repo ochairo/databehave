@@ -1,14 +1,14 @@
 # Seed & reproducibility
 
-databehave's determinism contract reduces to a single rule: identical
-`(schema, seed, input)` always produces identical output. This page
+For the same schema, options, deterministic plugin implementations and runtime/numeric conditions,
+generation produces identical output. This page
 documents how `seed` flows through the generator and the helpers that
 back it.
 
 The high-level seed pipeline is restated in
 [`design.md` §5](../design.md#5-determinism-model) for context; the
 authoritative implementation lives in
-[`src/generator/engine.ts`](../../src/generator/engine.ts) and
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) and
 [`src/foundation/prng.ts`](../../src/foundation/prng.ts).
 
 ---
@@ -20,7 +20,7 @@ import { mock, str } from '@databehave/schema'
 
 const a = mock(str(), { seed: 'order:42' })
 const b = mock(str(), { seed: 'order:42' })
-// a === b — bit-equal across machines.
+// a === b under the fixed conditions above.
 
 const c = mock(str(), { seed: 0xdeadbeef })  // unsigned 32-bit int
 ```
@@ -31,8 +31,7 @@ fed to `mulberry32`; numbers are coerced to `u32` and seed `mulberry32`
 directly. Either form yields a `Rng` with period ≈ 2³².
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (entry
-point `mock`, `seedKey` derivation).
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`mock` seed/factory selection).
 
 ## Default seed string `'databehave'`
 
@@ -51,8 +50,7 @@ seed will always produce identical output. Pass an explicit `seed` to
 diversify across runs.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see the
-`DEFAULT_SEED = 'databehave'` constant.
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts) (`options.seed ?? 'databehave'`).
 
 ## `mulberry32(seed)` and `rngFromString(s)`
 
@@ -72,7 +70,8 @@ r1.pick(['a', 'b'])  // RangeError on empty array
 `seedFromString(s: string): number` is FNV-1a 32-bit. The generator
 uses these internally; plugin authors who need a deterministic
 sub-stream can import them from the `@databehave/schema/internal`
-deep entry point.
+entry point. Kind and behavior callbacks already receive `context.rng` and `context.leafRng()`;
+prefer these runtime-scoped services when authoring extensions.
 
 `Rng.int` and `Rng.pick` throw `RangeError` on non-finite or inverted
 bounds and on an empty pick array.
@@ -87,10 +86,12 @@ disturbing the rest of the tree. See
 [sampling.md#mockoptionsstableby](./sampling.md#mockoptionsstableby)
 for the full API; it shares the seed pipeline documented here.
 
-## Cross-platform guarantee
+## Cross-platform limits
 
 The uniform sampling path (`Rng.next` × IEEE-754 arithmetic) is
 bit-exact across conforming JS engines. The Gaussian path used by
 `.normal(...)` calls `Math.log` / `Math.sqrt` / `Math.cos`, which are
 implementation-defined in ECMAScript — see
 [distributions.md#cross-platform-caveat](./distributions.md#cross-platform-caveat).
+This property of the uniform PRNG is not a blanket guarantee for complete schemas, custom callbacks or different
+plugin versions. Runtime support on Node.js 24 and 26 does not promise identical output across those majors.

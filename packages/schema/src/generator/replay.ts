@@ -12,36 +12,16 @@
 
 import { isDeepStrictEqual } from 'node:util'
 
+import { standardRuntime } from '../standard/runtime.js'
+import type { RuntimeReplay } from '../runtime/runtime.js'
 import { mock, type MockOptions } from './engine.js'
 import type { Infer, Schema } from '../foundation/types.js'
 
-/** A reusable, deterministic generator bound to a fixed seed/input. */
-export type Replay<S extends Schema> = {
-  /** Generate the value (always identical for identical bound options). */
-  (): Infer<S>
-  /** The frozen options used by this replay. */
-  readonly options: Readonly<MockOptions>
-}
+/** A reusable standard-runtime generator with frozen options and contract identities. */
+export type Replay<S extends Schema> = RuntimeReplay<S>
 
-/** Build a deterministic, repeatedly-callable generator. */
-export const replay = <S extends Schema>(schema: S, options: MockOptions = {}): Replay<S> => {
-  const frozen = deepFreeze({ ...options }) as MockOptions
-  const fn = (() => mock(schema, frozen)) as unknown as Replay<S>
-  Object.defineProperty(fn, 'options', { value: frozen, enumerable: true })
-  return fn
-}
-
-/** Recursively `Object.freeze` plain objects and arrays so callers cannot
- *  mutate bound options through nested references (e.g. `options.input`). */
-const deepFreeze = <T>(value: T): T => {
-  if (value === null || typeof value !== 'object') return value
-  if (Object.isFrozen(value)) return value
-  Object.freeze(value)
-  for (const k of Object.keys(value as Record<string, unknown>)) {
-    deepFreeze((value as Record<string, unknown>)[k])
-  }
-  return value
-}
+/** Bind the standard composition; custom schemas use runtime.replay. */
+export const replay = <S extends Schema>(schema: S, options: MockOptions = {}): Replay<S> => standardRuntime.replay(schema, options)
 
 /**
  * Run the generator twice with identical inputs and assert deep equality.

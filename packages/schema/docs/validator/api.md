@@ -18,6 +18,8 @@ Source:
 
 ---
 
+<a id="parse"></a>
+
 ## `parse(schema, value)`
 
 ```ts
@@ -27,8 +29,7 @@ const parse: <S extends Schema>(schema: S, value: unknown) => Infer<S>
 Validates `value` against `schema` and returns it typed as
 `Infer<typeof schema>` on success. On failure throws
 [`ConformError`](#conformerror) carrying every issue collected during
-the walk. `parse` never throws `SchemaConflictError` — that error class
-is reserved for unsatisfiable schemas at sample time.
+the walk. Metadata/registry validation or external plugin failures may throw independently of conformance issues.
 
 For composite kinds, `parse` returns a fresh value: object fields are
 copied (so `derivedFrom` keys can be filled in from the validated
@@ -38,6 +39,8 @@ checker.
 Source:
 [`src/validator/parse.ts`](../../src/validator/parse.ts) (`parse`).
 
+<a id="safeparse"></a>
+
 ## `safeParse(schema, value)`
 
 ```ts
@@ -45,7 +48,8 @@ const safeParse: <S extends Schema>(schema: S, value: unknown) => SafeParseResul
 ```
 
 Same as `parse` but returns a discriminated result instead of
-throwing. Use this when you want to surface multiple issues to the
+throwing for value-conformance failures. It does not catch metadata errors or arbitrary plugin exceptions.
+Use this when you want to surface multiple issues to the
 caller (HTTP handlers, form validators) without a `try`/`catch`.
 
 Source:
@@ -92,17 +96,22 @@ class ConformError extends DataBehaveError {
 
 type Issue = {
   readonly path:      readonly (string | number)[]
+  readonly code:      IssueCode
   readonly message:   string
   readonly expected?: string
   readonly received?: unknown
 }
 ```
 
-`ConformError` is the only error class `parse` / `safeParse` ever
-throws or returns. It carries one `Issue` per failed check; each
+`ConformError` carries the issues returned by `safeParse` or thrown by `parse` for value-conformance failure.
+It is not an exhaustive runtime error type. It carries one `Issue` per failed check; each
 issue records its own `path` so multi-issue reports stay precise.
 The error's `message` is a pre-formatted summary — single-issue or
 multi-line — suitable for direct logging.
+
+Match on `Issue.code` and `Issue.path`, not diagnostic message text. `IssueCode` includes the standard catalog and
+plugin-defined strings. Standard derived/invariant callback exceptions become `derived.callback-threw` and
+`invariant.callback-threw` issues during validation; generation does not apply that conversion.
 
 The class itself is documented under
 [`stability.md` → error class hierarchy](../stability.md#error-class-hierarchy);
@@ -127,8 +136,8 @@ const r = safeParse(User, { id: 0, name: 'A' })
 // r.ok === false
 // r.error.issues:
 //   [
-//     { path: ['id'],   message: '< min 1',          received: 0   },
-//     { path: ['name'], message: 'length < min 2',   received: 'A' },
+//     { path: ['id'], code: 'number.too-small', message: '...', received: 0 },
+//     { path: ['name'], code: 'string.too-short', message: '...', received: 'A' },
 //   ]
 ```
 
@@ -167,5 +176,5 @@ parse(Event, { kind: 'click', x: 1 as unknown }) // ConformError: '.x: expected 
 ```
 
 Source:
-[`src/validator/parse.ts`](../../src/validator/parse.ts) (`'object'`,
-`'discriminated'`, and domain branches in `check`).
+[`src/standard/kinds.ts`](../../src/standard/kinds.ts) and
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts).

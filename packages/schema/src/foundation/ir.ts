@@ -101,6 +101,7 @@ export type Modifiers = {
   readonly defaultValue?: unknown
   readonly description?: string
   readonly axes?: Axes
+  readonly behaviors?: Readonly<Record<string, unknown>>
 }
 
 export type SchemaCore =
@@ -117,8 +118,16 @@ export type SchemaCore =
   | UnionKind
   | DiscriminatedKind
 
-export type SchemaNode = SchemaCore & {
+/** Standard node union used within the standard descriptors. */
+export type StandardSchemaNode = SchemaCore & {
   readonly mods?: Modifiers
+}
+
+/** Open node carrier; each registered kind validates its own metadata. */
+export interface SchemaNode {
+  readonly kind: string
+  readonly mods?: Modifiers
+  readonly [metadata: string]: unknown
 }
 
 /** Helper: produce a fresh node with merged modifiers. `axes` are deep-merged. */

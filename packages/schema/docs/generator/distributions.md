@@ -17,7 +17,7 @@ import type { Distribution } from '@databehave/schema'
 
 Each branch is its own type alias (`WeightedDistribution`,
 `NormalDistribution`, `TypicalDistribution`), all re-exported from the
-package main entry. Plugin authors walking the IR via `walkSchema`
+package main entry. Plugin authors walking the IR via `runtime.walkSchema`
 will see these shapes verbatim.
 
 The DSL operators that produce them
@@ -29,7 +29,8 @@ sampling-time math.
 
 Source:
 [`src/foundation/axes.ts`](../../src/foundation/axes.ts) (IR types),
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (sampling).
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (distribution policy) and
+[`src/standard/generation.ts`](../../src/standard/generation.ts) (sampling math).
 
 ---
 
@@ -50,7 +51,7 @@ alphanumeric alphabet up to the rune-count bounds; arrays pick a
 uniform length within `[minLength, maxLength]`.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (`genNumber`,
+[`src/standard/generation.ts`](../../src/standard/generation.ts) (`genNumber`,
 `genString`, `genArray`).
 
 ## `kind: 'weighted'`
@@ -64,17 +65,16 @@ const status = enum_(['active', 'paused', 'archived'] as const)
 mock(status)  // 'active' ~80% of the time
 ```
 
-Weighted sampling normalises the supplied weights (`Math.max(0, w)`
-each) into a cumulative distribution, then draws `rng.next() * total`
-and walks the prefix sum. Negative weights are clamped to zero; if
-**every** weight is non-positive the picker falls through to the
+Weighted sampling normalises the supplied weights into a cumulative distribution, draws `rng.next() * total`
+and walks the prefix sum. Runtime metadata validation rejects negative or nonfinite weights; if
+**every** weight is zero the picker falls through to the
 domain / type-default path. Weight values that are not present in the
 underlying domain (`.in([...])`) are filtered out before sampling, so
 weighted-with-domain combinations stay consistent.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see
-`pickWeighted`, `sampleDiscrete`, `sampleFromDomain`.
+[`src/standard/generation.ts`](../../src/standard/generation.ts) (`pickWeighted`, `sampleDiscrete`) and
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (domain/distribution composition).
 
 ## `kind: 'typical'`
 
@@ -93,7 +93,7 @@ re-clamped to the integer-scaled bounds to absorb double-rounding
 error.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see
+[`src/standard/generation.ts`](../../src/standard/generation.ts) — see
 `genNumber`, `genDecimal` (`dist.kind === 'typical'` branches).
 
 ## `kind: 'normal'`
@@ -114,12 +114,11 @@ z  = sqrt(-2 * log(u1)) * cos(2π * u2)
 v  = mean + z * stddev
 ```
 
-The result is clamped into `[min, max]`. For integer schemas the
-clamped value is rounded; for decimals it is rounded to the declared
-scale.
+The result is clamped into `[min, max]`; decimals round it to the declared scale.
+The public standard composition permits `.normal` on continuous numbers and decimals, not integers.
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) — see
+[`src/standard/generation.ts`](../../src/standard/generation.ts) — see
 `sampleNormal`, `genNumber`, `genDecimal`.
 
 ### Cross-platform caveat
@@ -154,5 +153,5 @@ Untagged `union(...)` falls through to uniform branch choice (no
 matrix](../schema/bound-operators.md#capability-matrix)).
 
 Source:
-[`src/generator/engine.ts`](../../src/generator/engine.ts) (the
-`'discriminated'` case in `sampleByKind`).
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts) (weighted discriminators) and
+[`src/standard/generation.ts`](../../src/standard/generation.ts) (kind fallback).

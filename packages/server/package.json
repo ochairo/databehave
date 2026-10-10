@@ -1,7 +1,7 @@
 {
   "name": "@databehave/server",
-  "version": "0.1.4",
-  "description": "A JSON file config-driven mock server",
+  "version": "0.2.0",
+  "description": "HTTP runtime and transport plugins for Databehave",
   "type": "module",
   "author": "ochairo",
   "license": "MIT",
@@ -35,9 +35,6 @@
       "import": "./dist/index.js"
     }
   },
-  "bin": {
-    "databehave-server": "./dist/bin.js"
-  },
   "files": [
     "dist",
     "README.md",
@@ -45,36 +42,24 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": ">=18"
+    "node": "^24.0.0 || ^26.0.0"
   },
   "scripts": {
-    "build:admin": "vite build --config vite.admin.config.ts && mv dist/admin/ui-shell.html dist/admin/ui.html",
-    "build": "pnpm run build:admin && tsc -p tsconfig.build.json && chmod +x dist/bin.js",
-    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json --noEmit && tsc -p tsconfig.ui.json --noEmit",
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json --noEmit",
     "test": "vitest run --coverage",
     "test:watch": "vitest",
     "test:no-coverage": "vitest run",
     "bench": "vitest bench --run",
-    "clean": "rm -rf dist coverage dist-test",
-    "prepack": "pnpm clean && pnpm build",
-    "prepublishOnly": "pnpm clean && pnpm typecheck && pnpm test",
-    "pretypecheck": "pnpm --filter @databehave/schema build"
+    "clean": "rm -rf dist coverage dist-test"
   },
-  "dependencies": {},
-  "peerDependencies": {
-    "@databehave/schema": "^0.1.1"
-  },
-  "peerDependenciesMeta": {
-    "@databehave/schema": {
-      "optional": true
-    }
+  "dependencies": {
+    "@databehave/core": "workspace:^"
   },
   "devDependencies": {
-    "@databehave/schema": "workspace:*",
     "@types/node": "^25.9.1",
     "@vitest/coverage-v8": "3.2.6",
     "typescript": "^6.0.3",
-    "vite": "^6.4.3",
     "vitest": "^3.2.6"
   },
   "publishConfig": {

@@ -1,81 +1,109 @@
-<!-- markdownlint-disable MD033 MD041 -->
+# Databehave
 
-<div align="center">
+Compose deterministic data generation and mock HTTP applications from explicit plugins.
 
-# @databehave
+Databehave has a small lifecycle host. Schema generation, HTTP, OpenAPI, request validation, logging,
+CORS, fault injection and the admin UI live behind public extension contracts. Official and external
+plugins use the same contracts. A schema-only application needs no HTTP server; an HTTP-only
+application needs no schema library or admin assets.
 
-<b>A schema for how data behaves, and a mock server that runs on it.</b>
+| Package | Responsibility |
+| --- | --- |
+| `@databehave/core` | Typed capabilities, dependency validation, registration and resource lifecycle |
+| `@databehave/schema` | Instance-scoped schema kinds/behaviors, typed builders, deterministic generation and validation |
+| `@databehave/server` | HTTP pipeline, routes, Node listener, optional CORS and access logging |
+| `@databehave/openapi` | OpenAPI catalog, selectable generators, request validation and mock policies |
+| `@databehave/admin` | Fault controls, scenarios, optional admin UI and optional browser opener |
+| `@databehave/cli` | Explicit ESM configuration and signal handling |
 
-[![CI](https://github.com/ochairo/databehave/actions/workflows/ci.yml/badge.svg)](https://github.com/ochairo/databehave/actions/workflows/ci.yml)
-[![@databehave/schema](https://img.shields.io/npm/v/@databehave/schema?label=%40databehave%2Fschema)](https://www.npmjs.com/package/@databehave/schema)
-[![@databehave/server](https://img.shields.io/npm/v/@databehave/server?label=%40databehave%2Fserver)](https://www.npmjs.com/package/@databehave/server)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A518-brightgreen)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+## Start a mock server
 
-</div>
+The upcoming release requires Node.js 24 or 26. Supported and tested majors are 24 and 26;
+Node.js 18, 20 and 22 are no longer supported. Newer majors are not covered until added to the test matrix.
 
-## What is databehave?
-
-Most schema libraries describe what shape your data has. databehave describes how data *behaves* — distributions, domains, derived fields, invariants, exceptions, and cross-dataset relations — with a determinism model that keeps generated values consistent across requests and code changes.
-
-That schema is one half of the project. The other half is a mock HTTP server that consumes it: point it at an OpenAPI document, opt into auto-schema mode, and the same vocabulary that drives your unit-test fixtures drives your mock responses. One mental model, two packages.
-
-## 30-second tour
-
-```bash
-npm install --save-dev @databehave/server @databehave/schema
-npx databehave-server databehave.jsonc
+```sh
+npm install --save-dev @databehave/core @databehave/server @databehave/cli
 ```
 
-```jsonc
-// databehave.jsonc
-{
-  "server":    { "host": "127.0.0.1", "port": 8000 },
-  "openapi":   "./openapi.json",
-  "schema":    { "enabled": true },
-  "admin":     { "enabled": true },
-  "endpoints": {
-    // If you need to customize beyond auto generate response, you can add route modules here:
-    // E.g. "GET /products/list": "./src/routes/products/list.js"
-  }
-}
+```js
+// databehave.mjs
+import { defineConfig } from '@databehave/cli'
+import { httpPlugin, routesPlugin, nodeHttpPlugin } from '@databehave/server'
+
+export default defineConfig(() => ({
+  plugins: [
+    httpPlugin(),
+    routesPlugin({
+      'GET /hello': () => ({ json: { message: 'hello' } }),
+    }),
+    nodeHttpPlugin({ host: '127.0.0.1', port: 8000 }),
+  ],
+}))
 ```
 
-Every path declared in `openapi.json` is now served at `http://127.0.0.1:8000`.
-If you need full control over the generated responses, you can use `@databehave/schema` directly to define custom data generation logic.
-The admin UI at `http://127.0.0.1:8000/databehave` gives you a dashboard to override response data for each API endpoint, with support for saving and sharing override scenarios.
+Save the configuration as `databehave.mjs`, then run:
 
-## Repository layout
-
-```bash
-.
-├── biome.config.js     # — Biome code formatter config
-├── package.json        # — workspace root (private; not published)
-├── pnpm-lock.yaml      # — pnpm lockfile
-├── pnpm-workspace.yaml # — pnpm workspace config
-└──  packages/          # — workspace packages
-    ├── schema/         # — @databehave/schema (zero-dep schema + IR + generator)
-    └── server/         # — @databehave/server (OpenAPI- or JSON-driven mock server)
+```sh
+npx databehave ./databehave.mjs
 ```
+
+The configuration factory creates fresh plugin instances. Install and import optional features explicitly.
+Configuration and plugins are trusted application code; capabilities describe dependencies, not sandbox permissions.
+
+## Plugin lifecycle
+
+```mermaid
+flowchart LR
+  A[Validate dependencies] --> B[Setup contributions]
+  B --> C[Seal registration]
+  C --> D[Prepare data]
+  D --> E[Activate features]
+  E --> F[Open ingress]
+  F --> G[Stop ingress and cancel]
+  G --> H[Drain and dispose]
+```
+
+Dependencies determine initialization order. HTTP stages separately determine request order. Duplicate providers,
+missing dependencies, incompatible contract versions and cycles fail explicitly. A failed application cleans up its
+acquired resources; shutdown is idempotent. Create a new host to restart.
+
+For programmatic use, call `createHost({ plugins })`, await `host.start()`, obtain a typed capability with
+`host.get(token)`, and await `host.close()` in `finally`. Pure schema use stays synchronous through
+`createSchemaRuntime({ kinds, behaviors })`.
 
 ## Documentation
 
-- [`@databehave/schema` README](packages/schema/README.md) · [docs](packages/schema/docs/index.md)
-- [`@databehave/server` README](packages/server/README.md) · [docs](packages/server/docs/index.md)
-- [License](LICENSE)
+- [Documentation hub](docs/index.md)
+- [Writing plugins](docs/plugins.md)
+- Runnable examples: [plugin](examples/plugin.mjs), [schema](examples/schema.mjs), [HTTP](examples/http.mjs)
+- [Migration from the previous API and JSONC configuration](MIGRATION.md)
+- [Core plugin API](packages/core/README.md)
+- [Schema plugins](packages/schema/docs/extending.md)
+- [HTTP plugins](packages/server/README.md)
+- [OpenAPI plugins](packages/openapi/README.md)
+- [Admin plugins](packages/admin/README.md)
+- [CLI](packages/cli/README.md)
+- [Release and runtime support guide](docs/releasing.md)
 
-## Need help?
+## Development
 
-Open a discussion and include your config, expected behavior, and actual behavior.<br />
-Get support here: <https://github.com/ochairo/databehave/discussions>
+The project development container owns Node, pnpm, TypeScript, the language server and headless Chromium.
+It mounts this checkout at its canonical absolute path. If checking out elsewhere, update the Compose working
+directory, bind source/target and `io.dotfiles.project-root` label together.
 
-## Show your support
+```sh
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null build
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null up -d
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm install --frozen-lockfile
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm build
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm typecheck
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm test
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm lint
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm test:e2e
+env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null down
+```
 
-If you find this project useful, please give it a star on GitHub. It helps a lot.
-
-<br /><br />
-<div align="center">
-
-© 2026-present ochairo. See [LICENSE](./LICENSE)
-
-</div>
+Run `pnpm api:check`, `pnpm docs:check`, `pnpm examples:check`, `pnpm test:tooling` and `pnpm workflow:check`
+in the development container. Package checks consume a prepared bundle with
+`pnpm pack:check artifacts/release SOURCE_SHA`; see the [release guide](docs/releasing.md) for preparation commands. Browser tests use isolated headless profiles,
+loopback applications and synthetic scenarios at desktop and narrow viewports.

@@ -590,8 +590,8 @@ describe('parse — required-issue describes composite kinds', () => {
     assert.match(expectedFor(tuple(int(), str())), /^tuple\[2\]$/)
   })
 
-  it('union → "union(...)"', () => {
-    assert.match(expectedFor(union(int(), str())), /^union\(/)
+  it('union delegates required diagnostics to its closest branch', () => {
+    assert.equal(expectedFor(union(int(), str())), 'number')
   })
 
   it('discriminated → "discriminated(key: a | b | …)"', () => {

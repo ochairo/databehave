@@ -1,0 +1,5 @@
+{
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/runtime.d.ts",
+  "apiReport": { "reportFileName": "schema-runtime.api.md" }
+}

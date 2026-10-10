@@ -9,9 +9,9 @@ entry points:
   discriminated `SafeParseResult<T>` (`{ ok: true, value }` /
   `{ ok: false, error }`).
 
-Both share a single in-source implementation; `parse` is `safeParse`
-that throws on failure. They never throw any error class other than
-`ConformError` — see
+Both use `standardRuntime`; custom compositions use `runtime.parse` and `runtime.safeParse`.
+`parse` throws collected conformance issues as `ConformError`; `safeParse` returns them.
+Invalid metadata/registration and external callback failures can still throw — see
 [`design.md` §7](../design.md#7-error-model) for the broader error
 model, and
 [`stability.md`](../stability.md) for the SemVer commitments around
@@ -31,7 +31,7 @@ subset of [data-schema axes](../schema/bound-operators.md):
 | Axis | Behaviour at `parse(...)` |
 | --- | --- |
 | `domain` (`values` / `lookup`) | Value must be in the closed set; `lookup` resolves the candidate set from the sibling `parent[fromField]`. |
-| `invariants` (single-record) | Object-level predicates run after all fields are checked, with the assembled object as `value` and the parent as `ctx.parent`. |
+| `invariants` (single-record) | Primitive and composite predicates run after downstream validation, with the checked value and parent context. |
 | `correlate` (multi-field) | Implemented as object-kind invariants — same axis, typed against the inferred object shape. |
 | `derived` | The supplied value must deep-equal `derivedFrom(ctx)`; mismatches surface as `'derived value does not match computed value'`. |
 
@@ -51,5 +51,6 @@ For the full API surface (signatures, error class, examples), see
 [api.md](./api.md).
 
 Source:
-[`src/validator/parse.ts`](../../src/validator/parse.ts) (file header
-+ `check` switch).
+[`src/runtime/runtime.ts`](../../src/runtime/runtime.ts),
+[`src/standard/kinds.ts`](../../src/standard/kinds.ts) and
+[`src/standard/behaviors.ts`](../../src/standard/behaviors.ts).

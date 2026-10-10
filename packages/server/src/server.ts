@@ -1,618 +1,283 @@
+import type { Plugin } from '@databehave/core'
 import {
-  createServer as createNodeHttpServer,
-  type IncomingMessage,
-  type Server as NodeHttpServer,
-  type ServerResponse,
-} from 'node:http'
-import type { AddressInfo } from 'node:net'
-import { Readable } from 'node:stream'
-
-import { createAdminRoutes } from './admin/admin-routes.js'
-import {
-  AdminDestroySocketSignal,
-  type AdminModeConfig,
-} from './admin/admin-types.js'
-import { emitAdminBanner } from './admin/banner.js'
-import { createInjectHook, isDestroySocketSentinel } from './admin/inject.js'
-import { createOverridesStore } from './admin/overrides-store.js'
-import { resolveAdminCors } from './admin/resolve-cors.js'
-import { createScenariosStore } from './admin/scenarios-store.js'
-import { buildCorsResponseHeaders, buildPreflightResponse, mergeVary } from './cors.js'
-import { createAccessLogger } from './log.js'
-import {
-  createRequestValidationContext,
-  validateRequest,
-  type RequestValidationContext,
-} from './middleware/request-validation.js'
-import { parseOpenApi } from './openapi/loader.js'
-import { buildOpenApiRoutes } from './openapi/register.js'
+  httpCapability,
+  HttpTransportTermination,
+  UnsupportedTransportError,
+  type BindGuard,
+  type HttpMiddleware,
+  type HttpOutcome,
+  type HttpRuntime,
+  type ResolvedRoute,
+  type RouteSource,
+} from './http.js'
 import { buildRequest } from './request.js'
 import { buildResponse } from './response.js'
-import { matchPattern, parseRouteKey, parseRoutePattern } from './route-key.js'
-import type { RoutePattern } from './route-key.js'
-import type {
-  Config,
-  Handler,
-  ListenHandle,
-  ListenOptions,
-  Method,
-  MockRequest,
-  MockResponse,
-  ObservedMethod,
-  RouteKey,
-  Server,
-} from './types.js'
+import { matchPattern, parseRouteKey, parseRoutePattern, type RoutePattern } from './route-key.js'
+import type { MockRequest, MockResponse, ObservedMethod } from './types.js'
 
-const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost'])
+/** An indexed route retains its contribution's composition position for deterministic ties. */
+interface IndexedRoute {
+  readonly route: ResolvedRoute
+  readonly pattern: RoutePattern
+}
 
-/**
- * Resolve admin config defaults + validate inputs that don't
- * depend on listen() host. Returns `null` when admin is absent or
- * `enabled !== true`. Pure — no side effects.
- */
-export const resolveAdminMode = (
-  cfg: AdminModeConfig | undefined,
-): {
-  path: string
-  ui: boolean
-  headers: boolean
-  bind: 'loopback-only' | 'any'
-  cors: NonNullable<AdminModeConfig['cors']>
-  allowDestroy: boolean
-  openapiBody: string | undefined
-  scenariosDir: string
-} | null => {
-  if (!cfg || cfg.enabled !== true) return null
-  const path = cfg.path ?? '/databehave'
-  if (!path.startsWith('/')) {
-    throw new Error(
-      `@databehave/server: admin.path must start with "/" (got ${JSON.stringify(path)})`,
-    )
+const genericError = (): MockResponse => ({ status: 500, json: { error: 'internal_error', message: 'Internal server error' } })
+
+/** Shutdown budget shared by logical requests and optional transports. */
+export interface HttpOptions {
+  readonly drainTimeoutMs?: number
+}
+
+/** Provide an instance-local HTTP pipeline; no listener or feature is installed implicitly. */
+export const httpPlugin = (options: HttpOptions = {}): Plugin => {
+  const drainTimeoutMs = options.drainTimeoutMs ?? 1000
+  if (!Number.isFinite(drainTimeoutMs) || drainTimeoutMs < 0) throw new Error('drainTimeoutMs must be a finite non-negative number')
+  let drainDeadline: number | undefined
+  let accepting = false
+  const pending = new Set<Promise<void>>()
+  const sources: RouteSource[] = []
+  const middleware: HttpMiddleware[] = []
+  const guards: BindGuard[] = []
+  let sealed = false
+  let active = false
+  let lifetime: AbortSignal | undefined
+  let routes: readonly ResolvedRoute[] = Object.freeze([])
+  let indexed: readonly IndexedRoute[] = []
+  const exact = new Map<string, ResolvedRoute>()
+  const assertRegistration = (): void => {
+    if (sealed) throw new Error('HTTP registration is sealed')
+  }
+  const assertActive = (): void => {
+    if (!active) throw new Error('HTTP runtime has not activated')
+    if (lifetime?.aborted) throw lifetime.reason
+  }
+  const findRoute = (method: string, path: string): { route: ResolvedRoute; params: Readonly<Record<string, string>> } | undefined => {
+    const route = exact.get(`${method} ${path}`)
+    if (route) return { route, params: Object.create(null) as Record<string, string> }
+    for (const entry of indexed) {
+      if (entry.route.method !== method) continue
+      const params = matchPattern(entry.pattern, path)
+      if (params) return { route: entry.route, params }
+    }
+    return undefined
+  }
+  const suppressHead = async (response: Response, method: string): Promise<Response> => {
+    if (method !== 'head') return response
+    await response.body?.cancel()
+    return new Response(null, { status: response.status, headers: response.headers })
+  }
+  const handleError = async (request: MockRequest, error: unknown): Promise<MockResponse> => {
+    for (const entry of middleware) {
+      if (entry.stage !== 'error') continue
+      try {
+        const response = await entry.handle(request, error)
+        if (response) return response
+      } catch {
+        return genericError()
+      }
+    }
+    return genericError()
+  }
+  const execute = async (raw: Request): Promise<HttpOutcome> => {
+    const started = performance.now()
+    const method = raw.method.toLowerCase() as ObservedMethod
+    const path = new URL(raw.url).pathname
+    const matched = findRoute(method, path) ?? (method === 'head' ? findRoute('get', path) : undefined)
+    const request = buildRequest(raw, matched?.params, matched?.route.method ?? method)
+    let error: unknown
+    let outcome: HttpOutcome | undefined
+    let response: MockResponse | undefined
+    try {
+      for (const stage of ['preflight', 'validation', 'interception'] as const) {
+        for (const entry of middleware) {
+          if (entry.stage !== stage) continue
+          const result = await entry.handle(request)
+          if (result) { response = result; break }
+        }
+        if (response) break
+      }
+      response ??= matched ? await matched.route.handler(request) : { status: 404, json: { error: 'not_found', method: request.method, path: request.path } }
+    } catch (caught) {
+      error = caught
+      if (caught instanceof HttpTransportTermination) outcome = { kind: 'terminate', reason: caught.message }
+      else response = await handleError(request, caught)
+    }
+    if (!outcome) {
+      try {
+        let decorated = response ?? genericError()
+        for (const entry of middleware) {
+          if (entry.stage !== 'decoration') continue
+          decorated = await entry.handle(request, decorated) ?? decorated
+        }
+        const webResponse = buildResponse(decorated)
+        outcome = { kind: 'response', response: await suppressHead(webResponse, method) }
+      } catch (caught) {
+        error = caught
+        if (caught instanceof HttpTransportTermination) outcome = { kind: 'terminate', reason: caught.message }
+        else {
+          let fallback: Response
+          try { fallback = buildResponse(await handleError(request, caught)) }
+          catch { fallback = buildResponse(genericError()) }
+          outcome = { kind: 'response', response: await suppressHead(fallback, method) }
+        }
+      }
+    }
+    const observation = { request, outcome, durationMs: performance.now() - started, ...(error === undefined ? {} : { error }) }
+    for (const entry of middleware) {
+      if (entry.stage !== 'observation') continue
+      try { await entry.handle(observation) } catch { /* Observers cannot change the terminal outcome. */ }
+    }
+    return outcome
+  }
+  const runtime: HttpRuntime = {
+    get drainTimeoutMs() { return drainTimeoutMs },
+    get drainDeadline() { return drainDeadline },
+    registerRoutes(source) {
+      assertRegistration()
+      if (!source.owner || !Number.isFinite(source.order)) throw new Error('HTTP route source requires an owner and finite composition order')
+      sources.push(Object.freeze({ ...source }))
+    },
+    registerMiddleware(entry) {
+      assertRegistration()
+      if (!entry.owner || !Number.isFinite(entry.order)) throw new Error('HTTP middleware requires an owner and finite composition order')
+      middleware.push(Object.freeze({ ...entry }))
+    },
+    registerBindGuard(guard) { assertRegistration(); guards.push(Object.freeze({ ...guard })) },
+    get routes() {
+      if (!active) throw new Error('HTTP route catalog is unavailable before activation')
+      return routes
+    },
+    resolveRoute(method, path) {
+      assertActive()
+      const normalized = method.toLowerCase()
+      return (findRoute(normalized, path) ?? (normalized === 'head' ? findRoute('get', path) : undefined))?.route
+    },
+    async checkBind(bind) { for (const guard of guards) await guard.check(bind) },
+    async dispatch(request) {
+      assertActive()
+      if (!accepting) throw new Error('HTTP runtime is not accepting requests')
+      request.signal.throwIfAborted()
+      const controller = new AbortController()
+      const abortRequest = (): void => controller.abort(request.signal.reason)
+      const abortLifetime = (): void => controller.abort(lifetime?.reason)
+      request.signal.addEventListener('abort', abortRequest, { once: true })
+      lifetime?.addEventListener('abort', abortLifetime, { once: true })
+      let resolveDone: () => void = () => undefined
+      const done = new Promise<void>((resolve) => { resolveDone = resolve })
+      pending.add(done)
+      const finish = (): void => {
+        pending.delete(done)
+        resolveDone()
+        request.signal.removeEventListener('abort', abortRequest)
+        lifetime?.removeEventListener('abort', abortLifetime)
+      }
+      try {
+        const outcome = await execute(new Request(request, { signal: controller.signal }))
+        if (outcome.kind !== 'response' || !outcome.response.body) { finish(); return outcome }
+        const reader = outcome.response.body.getReader()
+        let stopped = false
+        let cancellation: Promise<void> | undefined
+        let output: ReadableStreamDefaultController<Uint8Array>
+        const complete = (): void => {
+          controller.signal.removeEventListener('abort', abortBody)
+          reader.releaseLock()
+          finish()
+        }
+        const cancel = (reason: unknown): Promise<void> => {
+          if (cancellation) return cancellation
+          stopped = true
+          cancellation = reader.cancel(reason).finally(complete)
+          return cancellation
+        }
+        const abortBody = (): void => {
+          if (stopped) return
+          output.error(controller.signal.reason)
+          void cancel(controller.signal.reason).catch(() => undefined)
+        }
+        const body = new ReadableStream<Uint8Array>({
+          start(stream) { output = stream },
+          async pull(stream) {
+            try {
+              const chunk = await reader.read()
+              if (stopped) return
+              if (chunk.done) { stopped = true; stream.close(); complete() }
+              else stream.enqueue(chunk.value)
+            } catch (error) {
+              if (!stopped) { stopped = true; stream.error(error); complete() }
+            }
+          },
+          cancel,
+        }, { highWaterMark: 0 })
+        controller.signal.addEventListener('abort', abortBody, { once: true })
+        if (controller.signal.aborted) abortBody()
+        return { kind: 'response', response: new Response(body, { status: outcome.response.status, statusText: outcome.response.statusText, headers: outcome.response.headers }) }
+      } catch (error) { finish(); throw error }
+    },
+    async fetch(request) {
+      const outcome = await runtime.dispatch(request)
+      if (outcome.kind === 'terminate') throw new UnsupportedTransportError(outcome.reason)
+      return outcome.response
+    },
   }
   return {
-    path,
-    ui: cfg.ui !== false,
-    headers: cfg.headers !== false,
-    bind: cfg.bind ?? 'loopback-only',
-    cors: cfg.cors ?? 'auto',
-    allowDestroy: cfg.allowDestroy !== false,
-    openapiBody: cfg.openapiBody,
-    scenariosDir: cfg.scenariosDir ?? `${process.cwd()}/mock-scenarios`,
-  }
-}
-
-/**
- * Compose two onRequest hooks (user-first per spec H13): if the user
- * hook returned a response, skip the admin inject hook; else call
- * inject. Exported for unit testability.
- */
-export const composeAdminOnRequest = (
-  userHook:
-    | ((
-        req: MockRequest,
-      ) => MockResponse | void | Promise<MockResponse | void>)
-    | undefined,
-  adminHook: (
-    req: MockRequest,
-  ) => Promise<MockResponse | void>,
-): ((
-  req: MockRequest,
-) => Promise<MockResponse | void>) => {
-  if (!userHook) return adminHook
-  return async (req) => {
-    const first = await userHook(req)
-    if (first) return first
-    return adminHook(req)
-  }
-}
-
-interface DynamicRoute {
-  readonly method: Method
-  readonly pattern: RoutePattern
-  readonly handler: Handler
-}
-
-interface RouteIndex {
-  /** Exact `'method path'` → handler. O(1) lookup, the common case. */
-  readonly statik: Map<string, Handler>
-  /**
-   * Dynamic patterns scanned in declaration order. Each entry is
-   * tried only after the static lookup misses, so per-request cost
-   * for an all-static config stays O(1).
-   */
-  readonly dynamic: readonly DynamicRoute[]
-}
-
-const buildRouteIndex = (config: Config): RouteIndex => {
-  const statik = new Map<string, Handler>()
-  const dynamic: DynamicRoute[] = []
-  const declared = new Set<string>()
-  const declaredKeys = new Set<RouteKey>()
-
-  const entries = Object.entries(config.routes ?? {}) as Array<
-    [RouteKey, Handler | undefined]
-  >
-  for (const [key, handler] of entries) {
-    if (!handler) continue
-    const { method, path } = parseRouteKey(key)
-    const pattern = parseRoutePattern(path)
-    const dispatchKey = `${method} ${path}`
-    if (declared.has(dispatchKey)) {
-      throw new Error(`@databehave/server: duplicate route declared: ${dispatchKey}`)
-    }
-    declared.add(dispatchKey)
-    declaredKeys.add(`${method.toUpperCase()} ${path}` as RouteKey)
-    if (pattern.isStatic) {
-      statik.set(dispatchKey, handler)
-    } else {
-      dynamic.push({ method, pattern, handler })
-    }
-  }
-
-  // OpenAPI walker fills only the gaps the user did NOT declare.
-  // Declared (hand-written) routes always win — no error, just skip.
-  if (config.openapi !== undefined) {
-    const doc = parseOpenApi(config.openapi)
-    const oasRoutes = buildOpenApiRoutes(doc, {
-      skip: declaredKeys,
-      ...(config.onOpenApiWalkError !== undefined
-        ? { onWalkError: config.onOpenApiWalkError }
-        : {}),
-      ...(config.onOpenApiEmptySchema !== undefined
-        ? { onEmptySchema: config.onOpenApiEmptySchema }
-        : {}),
-    })
-    for (const [key, handler] of oasRoutes) {
-      const { method, path } = parseRouteKey(key)
-      const pattern = parseRoutePattern(path)
-      const dispatchKey = `${method} ${path}`
-      if (declared.has(dispatchKey)) continue
-      declared.add(dispatchKey)
-      if (pattern.isStatic) {
-        statik.set(dispatchKey, handler)
-      } else {
-        dynamic.push({ method, pattern, handler })
-      }
-    }
-  }
-
-  return { statik, dynamic }
-}
-
-interface Matched {
-  readonly handler: Handler
-  readonly params: Readonly<Record<string, string>>
-}
-
-const dispatch = (
-  index: RouteIndex,
-  method: ObservedMethod,
-  path: string,
-): Matched | null => {
-  const staticHit = index.statik.get(`${method} ${path}`)
-  if (staticHit) return { handler: staticHit, params: {} }
-  for (const route of index.dynamic) {
-    if (route.method !== method) continue
-    const params = matchPattern(route.pattern, path)
-    if (params) return { handler: route.handler, params }
-  }
-  return null
-}
-
-/**
- * Build a @databehave/server server.
- *
- * Construction validates every route key and pre-computes a dispatch
- * index (static lookups are O(1), `:param` patterns are linear). The
- * returned object exposes:
- *
- * - `fetch(Request)` for in-process testing — no socket is opened.
- * - `listen({port, host})` to bind a Node HTTP server. Port `0`
- *   asks the OS for a free port; the resolved port/host come back in
- *   the handle.
- *
- * Request flow per call:
- *   1. CORS preflight (OPTIONS) → short-circuit when `cors` is set
- *   2. `hooks.onRequest` → may short-circuit
- *   3. Route dispatch → handler / OAS walker / 404
- *   4. `hooks.onResponse` → may replace the result
- *   5. CORS response headers merged on top (don't override the user)
- *   6. Handler errors funnel through `hooks.onError` or fall back
- *      to a 500 JSON envelope.
- */
-/**
- * Route a runtime `'error'` event from a bound Node `http.Server` to
- * the user-supplied `onServerError` hook (when present), with a
- * `console.error` fallback. Exported so the branching is unit-testable
- * without standing up a real socket and provoking EMFILE/EACCES.
- *
- * Branch contract:
- *   - no hook              → log via `console.error`
- *   - hook returns         → silent (hook owns reporting)
- *   - hook itself throws   → log the *hook* failure AND the original
- *                            error, so a misbehaving logger never
- *                            silently swallows a real server fault.
- */
-export const handleRuntimeServerError = (
-  err: Error,
-  onServerError: ((err: Error) => void) | undefined,
-): void => {
-  if (onServerError) {
-    try {
-      onServerError(err)
-      return
-    } catch (hookErr) {
-      // eslint-disable-next-line no-console
-      console.error('[@databehave/server] onServerError hook threw:', hookErr)
-    }
-  }
-  // eslint-disable-next-line no-console
-  console.error('[@databehave/server] server error:', err)
-}
-
-export const createServer = (config: Config): Server => {
-  const admin = resolveAdminMode(config.admin)
-  let effectiveConfig: Config = config
-
-  if (admin) {
-    const store = createOverridesStore({
-      warn: (m: string) => console.warn(m),
-    })
-    const corsHeaders = resolveAdminCors(admin.bind, admin.cors)
-    const scenarios = createScenariosStore({ dir: admin.scenariosDir })
-    // Surface hand-written routes to the admin UI so handler-only
-    // endpoints (those not in the OAS doc, or projects without one)
-    // still appear in the operation list. OAS entries win on dedupe
-    // inside `buildAdminRoutesList`; admin's own routes are filtered
-    // there too. OAS-walker output is already covered by `openapiBody`.
-    const handlerRoutes: Array<{ method: string; path: string }> = []
-    for (const key of Object.keys(config.routes ?? {}) as RouteKey[]) {
-      try {
-        const { method, path } = parseRouteKey(key)
-        handlerRoutes.push({ method: method.toUpperCase(), path })
-      } catch {
-        // buildRouteIndex below will surface invalid keys with a real error.
-      }
-    }
-    const adminRouteEntries = createAdminRoutes({
-      store,
-      basePath: admin.path,
-      ui: admin.ui,
-      corsHeaders,
-      scenarios,
-      handlerRoutes,
-      ...(admin.openapiBody !== undefined
-        ? { openapiBody: admin.openapiBody }
-        : {}),
-    })
-
-    // Fail-fast on conflict between admin routes and user routes —
-    // duplicates would silently shadow each other otherwise.
-    const userRoutes = config.routes ?? {}
-    for (const key of Object.keys(adminRouteEntries)) {
-      if (Object.prototype.hasOwnProperty.call(userRoutes, key)) {
-        throw new Error(
-          `@databehave/server: admin route ${key} collides with a user-declared route. ` +
-            `Move admin.path to a free prefix or rename the user route.`,
-        )
-      }
-    }
-
-    // Inject hook is only registered when `headers` is true OR there
-    // can be sticky overrides — and stickies require the admin REST
-    // endpoints, which are always present, so the hook is always
-    // useful here. The `headers` flag is honored inside the inject
-    // hook by feeding it an empty-header view when disabled.
-    const adminHookCore = createInjectHook({
-      store,
-      allowDestroy: admin.allowDestroy,
-      // Bypass both the bare base path (admin HTML) and any descendant
-      // (`/overrides`, `/ui.js`, …) so the inject hook never injects on
-      // admin-owned URLs.
-      bypassPathPrefixes: [admin.path],
-      logger: { warn: (m: string) => console.warn(m) },
-    })
-    const adminHook = admin.headers
-      ? adminHookCore
-      : async (req: MockRequest) =>
-          adminHookCore({ ...req, headers: {} } as MockRequest)
-
-    const userHook = config.hooks?.onRequest
-    const composed = composeAdminOnRequest(userHook, adminHook)
-
-    effectiveConfig = {
-      ...config,
-      routes: { ...userRoutes, ...adminRouteEntries },
-      hooks: { ...(config.hooks ?? {}), onRequest: composed },
-    }
-  }
-
-  const index = buildRouteIndex(effectiveConfig)
-  const hooks = effectiveConfig.hooks ?? {}
-  const cors = effectiveConfig.cors
-  const accessLogger = createAccessLogger(effectiveConfig.log, admin?.path)
-
-  // Build the request-validation context once per server boot. When
-  // `validation.request !== true` (the default) the context is null
-  // and the per-request hot path short-circuits.
-  //
-  // Schema-level errors (unsupported keyword, $ref cycle, ReDoS-sized
-  // pattern, depth-cap exceeded) throw at boot from
-  // `createRequestValidationContext` so a misconfigured spec is a
-  // fail-fast — never a silent runtime degradation.
-  let validationCtx: RequestValidationContext | null = null
-  if (effectiveConfig.validation?.request === true && effectiveConfig.openapi !== undefined) {
-    const doc = parseOpenApi(effectiveConfig.openapi)
-    const maxBodyBytes = effectiveConfig.validation?.maxBodyBytes
-    validationCtx = createRequestValidationContext(
-      doc as Parameters<typeof createRequestValidationContext>[0],
-      maxBodyBytes !== undefined ? { maxBodyBytes } : {},
-    )
-  }
-
-  const decorateWithCors = (
-    res: MockResponse,
-    req: MockRequest,
-  ): MockResponse => {
-    if (!cors) return res
-    const corsHeaders = buildCorsResponseHeaders(cors, req)
-    // Handler-supplied headers win — CORS only fills the gaps. `Vary`
-    // is the deliberate exception: HTTP semantics require it to be
-    // additive, so a handler-set `Vary: Accept-Encoding` is merged
-    // with the CORS `Vary: Origin` (case-insensitive dedupe) rather
-    // than silently replacing it.
-    const merged: Record<string, string> = { ...corsHeaders }
-    if (res.headers) {
-      for (const [k, v] of Object.entries(res.headers)) {
-        const lk = k.toLowerCase()
-        if (lk === 'vary') {
-          merged.vary = mergeVary(merged.vary, v)
-        } else {
-          merged[lk] = v
-        }
-      }
-    }
-    return { ...res, headers: merged }
-  }
-
-  const fetchImpl = async (
-    req: globalThis.Request,
-    suppressLog = false,
-  ): Promise<globalThis.Response> => {
-    const probe = buildRequest(req)
-    const logStart =
-      accessLogger && !suppressLog ? Date.now() : 0
-    const finalize = (res: globalThis.Response, errorMsg?: string): globalThis.Response => {
-      if (!accessLogger || suppressLog) return res
-      accessLogger.emit({
-        method: probe.method.toUpperCase(),
-        path: probe.path,
-        status: res.status,
-        ms: Date.now() - logStart,
-        bytes: res.headers.get('content-length') ?? '-',
-        override: res.headers.get('x-mock-injected')?.split(':')[0],
-        error: errorMsg,
+    id: 'databehave.http', apiVersion: 1, provides: [httpCapability],
+    setup(ctx) {
+      ctx.provide(httpCapability, runtime)
+      ctx.onSeal(() => {
+        sealed = true
+        sources.sort((a, b) => a.order - b.order)
+        middleware.sort((a, b) => a.order - b.order)
       })
-      return res
-    }
-
-    // 1. CORS preflight bypasses everything below.
-    if (cors && req.method.toUpperCase() === 'OPTIONS') {
-      return finalize(buildResponse(buildPreflightResponse(cors, probe)))
-    }
-
-    // 1a. Inbound request validation (opt-in via
-    // `config.validation.request`). Runs BEFORE mock/handler
-    // resolution so a request that fails the OAS contract is rejected
-    // with an RFC 7807 envelope without invoking handlers, hooks, or
-    // mock-mode injection. When `validationCtx` is null (the default)
-    // the function short-circuits and behaviour is byte-identical to
-    // pre-validation builds.
-    if (validationCtx) {
-      const violation = await validateRequest(req, validationCtx)
-      if (violation) return finalize(violation)
-    }
-
-    // 1b. RFC 7231 HEAD semantics: if the HEAD route is not declared,
-    // run the GET pipeline once and strip the body from the response.
-    // Hooks (`onRequest`, `onResponse`, mock-mode) fire on the inner
-    // GET call only — the outer HEAD short-circuits here before the
-    // `try` block, so they aren't observed twice for one logical
-    // request. Explicit `head` routes still take precedence (handled
-    // by `dispatch` for the original method).
-    if (
-      req.method.toUpperCase() === 'HEAD' &&
-      !dispatch(index, 'head', probe.path)
-    ) {
-      const asGet = new Request(req.url, {
-        method: 'GET',
-        headers: req.headers,
+    },
+    activate(ctx) {
+      lifetime = ctx.signal
+      const resolved = new Map<string, ResolvedRoute>()
+      for (const source of sources) {
+        for (const definition of source.materialize()) {
+          const { method, path } = parseRouteKey(definition.key)
+          parseRoutePattern(path)
+          const key = `${method} ${path}`
+          const previous = resolved.get(key)
+          if (previous?.priority === definition.priority) {
+            throw new Error(`Duplicate HTTP route ${definition.key}: ${previous.owner} and ${source.owner}`)
+          }
+          if (previous?.priority === 'explicit') continue
+          resolved.delete(key)
+          resolved.set(key, Object.freeze({ ...definition, owner: source.owner, method, path }))
+        }
+      }
+      routes = Object.freeze([...resolved.values()])
+      indexed = routes.flatMap((route) => {
+        const pattern = parseRoutePattern(route.path)
+        if (!pattern.isStatic) return [{ route, pattern }]
+        exact.set(`${route.method} ${route.path}`, route)
+        return []
       })
-      // Inner GET is recursed with logging suppressed so the access
-      // logger emits one line per logical request — for the outer
-      // HEAD method, not the synthetic GET probe.
-      const fullResponse = await fetchImpl(asGet, true)
-      return finalize(
-        new Response(null, {
-          status: fullResponse.status,
-          headers: fullResponse.headers,
-        }),
-      )
-    }
-
-    try {
-      // 2. onRequest may short-circuit (e.g. mock-mode error injection).
-      if (hooks.onRequest) {
-        const short = await hooks.onRequest(probe)
-        if (short) {
-          // admin destroy sentinel: bubble up so `listen()` can drop the
-          // underlying socket. `server.fetch()` callers observe the
-          // throw — destroy is a transport-level signal, not a body.
-          if (isDestroySocketSentinel(short)) {
-            throw new AdminDestroySocketSignal()
-          }
-          const final = hooks.onResponse
-            ? (await hooks.onResponse(probe, short)) ?? short
-            : short
-          return finalize(buildResponse(decorateWithCors(final, probe)))
-        }
+      active = true
+      ctx.defer(() => { active = false })
+    },
+    open(ctx) {
+      accepting = true
+      const stopAccepting = (): void => {
+        accepting = false
+        drainDeadline ??= performance.now() + drainTimeoutMs
       }
-
-      // 3. Dispatch.
-      const matched = dispatch(index, probe.method, probe.path)
-      if (!matched) {
-        const notFound: MockResponse = {
-          status: 404,
-          json: { error: 'not_found', method: probe.method, path: probe.path },
-        }
-        const final = hooks.onResponse
-          ? (await hooks.onResponse(probe, notFound)) ?? notFound
-          : notFound
-        return finalize(buildResponse(decorateWithCors(final, probe)))
-      }
-      const kitReq =
-        Object.keys(matched.params).length === 0
-          ? probe
-          : buildRequest(req, matched.params)
-      const raw = await matched.handler(kitReq)
-
-      // 4. onResponse may replace the body / status / headers.
-      const final = hooks.onResponse
-        ? (await hooks.onResponse(kitReq, raw)) ?? raw
-        : raw
-
-      return finalize(buildResponse(decorateWithCors(final, kitReq)))
-    } catch (err) {
-      // Admin destroy signal must escape — hooks.onError must NOT see
-      // it (it's transport-level, not a user error). `listen()` catches
-      // it specifically. `server.fetch()` callers also receive the throw.
-      if (err instanceof AdminDestroySocketSignal) throw err
-      const errMsg = err instanceof Error ? err.message : String(err)
-      const errRes = hooks.onError
-        ? await hooks.onError(probe, err)
-        : ({
-            status: 500,
-            json: {
-              error: 'internal_error',
-              message: 'Internal server error',
-            },
-          } satisfies MockResponse)
-      return finalize(buildResponse(decorateWithCors(errRes, probe)), errMsg)
-    }
-  }
-
-  const fetch = (req: globalThis.Request): Promise<globalThis.Response> => fetchImpl(req)
-
-  const listen = async (
-    opts: ListenOptions = {},
-  ): Promise<ListenHandle> => {
-    const requestedPort = opts.port ?? 0
-    const requestedHost = opts.host ?? '127.0.0.1'
-
-    // Admin bind-policy: refuse non-loopback hosts unless explicitly
-    // opted in. Host comes from listen options (not config), so the
-    // check belongs here rather than at server construction time.
-    if (admin && admin.bind !== 'any' && !LOOPBACK_HOSTS.has(requestedHost)) {
-      throw new Error(
-        `@databehave/server: admin is enabled and server.host=${JSON.stringify(
-          requestedHost,
-        )} — set admin.bind: "any" to confirm this is intentional, or bind to loopback (127.0.0.1, ::1, localhost). See README "Admin mode".`,
-      )
-    }
-
-    // Tiny Node `http` ↔ Web Fetch adapter. Node ≥ 18.17 provides
-    // `Request`, `Response`, `Headers`, and `Readable.{toWeb,fromWeb}`
-    // as built-ins, so no polyfill or extra runtime dependency is needed.
-    const server = createNodeHttpServer((req: IncomingMessage, res: ServerResponse) => {
-      // Build a Web Request out of the IncomingMessage.
-      const host = req.headers.host ?? `${requestedHost}:${requestedPort}`
-      const url = `http://${host}${req.url ?? '/'}`
-      const method = (req.method ?? 'GET').toUpperCase()
-      const headers = new Headers()
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (v === undefined) continue
-        if (Array.isArray(v)) {
-          for (const value of v) headers.append(k, value)
-        } else {
-          headers.set(k, v)
-        }
-      }
-      const init: RequestInit & { duplex?: 'half' } = { method, headers }
-      if (method !== 'GET' && method !== 'HEAD') {
-        init.body = Readable.toWeb(req) as unknown as BodyInit
-        // Required when sending a stream body in undici/fetch.
-        init.duplex = 'half'
-      }
-
-      Promise.resolve()
-        .then(() => fetch(new Request(url, init)))
-        .then(async (webRes) => {
-          res.statusCode = webRes.status
-          webRes.headers.forEach((value, key) => {
-            res.setHeader(key, value)
-          })
-          if (!webRes.body) {
-            res.end()
-            return
-          }
-          const nodeStream = Readable.fromWeb(
-            webRes.body as Parameters<typeof Readable.fromWeb>[0],
-          )
-          await new Promise<void>((resolveStream, rejectStream) => {
-            nodeStream.on('error', rejectStream)
-            res.on('error', rejectStream)
-            res.on('finish', () => resolveStream())
-            nodeStream.pipe(res)
-          })
-        })
-        .catch((err: unknown) => {
-          // Admin destroy: drop the socket without a response.
-          if (err instanceof AdminDestroySocketSignal) {
-            try {
-              req.socket.destroy()
-            } catch {
-              /* socket may already be gone */
-            }
-            return
-          }
-          // Keep diagnostics on the server side; never leak internals to clients.
-          // eslint-disable-next-line no-console
-          console.error('[@databehave/server] request handling error:', err)
-          if (!res.headersSent) {
-            res.statusCode = 500
-            res.setHeader('content-type', 'application/json')
-          }
-          res.end(JSON.stringify({ error: 'internal_error', message: 'Internal server error' }))
-        })
-    })
-
-    return new Promise<ListenHandle>((resolve, reject) => {
-      const onBindError = (err: Error): void => {
-        reject(err)
-      }
-      server.once('error', onBindError)
-      server.listen(requestedPort, requestedHost, () => {
-        // Bind succeeded — detach the bind-time rejector so subsequent
-        // runtime errors (EMFILE, accept errors, etc.) don't try to
-        // resolve an already-settled promise. Surface them on stderr
-        // instead so they're not swallowed silently.
-        server.removeListener('error', onBindError)
-        server.on('error', (err) => handleRuntimeServerError(err, hooks.onServerError))
-        const info = server.address() as AddressInfo
-        if (admin) {
-          emitAdminBanner(info.address, info.port, admin.path)
-        }
-        resolve({
-          port: info.port,
-          host: info.address,
-          close: () =>
-            new Promise<void>((res, rej) => {
-              server.close((err) => (err ? rej(err) : res()))
-            }),
-        })
+      ctx.ownIngress({
+        stopAccepting,
+        async drainAndClose() {
+          stopAccepting()
+          if (!pending.size) return
+          let timer: ReturnType<typeof setTimeout> | undefined
+          try {
+            await Promise.race([
+              Promise.all([...pending]),
+              new Promise<never>((_resolve, reject) => {
+                timer = setTimeout(() => reject(new Error(`HTTP drain timed out with ${pending.size} unfinished request(s)`)), Math.max(0, (drainDeadline ?? 0) - performance.now()))
+              }),
+            ])
+          } finally { clearTimeout(timer) }
+        },
       })
-    })
+    },
   }
-
-  return { fetch, listen }
 }

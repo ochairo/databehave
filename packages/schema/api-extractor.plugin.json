@@ -1,0 +1,5 @@
+{
+  "extends": "./api-extractor.json",
+  "mainEntryPointFilePath": "<projectFolder>/dist/plugin.d.ts",
+  "apiReport": { "reportFileName": "schema-plugin.api.md" }
+}

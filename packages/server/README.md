@@ -1,87 +1,89 @@
-<!-- markdownlint-disable MD033 MD041 -->
-
-<div align="center">
-
 # @databehave/server
 
-<b>A JSON file config-driven mock server</b>
+HTTP contracts and explicit HTTP plugins for Databehave. The package has no schema,
+OpenAPI, admin, UI-build or CLI dependency.
 
-[![npm version](https://img.shields.io/npm/v/@databehave/server.svg)](https://www.npmjs.com/package/@databehave/server)
-[![CI](https://github.com/ochairo/databehave/actions/workflows/ci.yml/badge.svg)](https://github.com/ochairo/databehave/actions/workflows/ci.yml)
-[![Node.js](https://img.shields.io/badge/node-%E2%89%A518.17-brightgreen)](https://nodejs.org/)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+```ts
+import { createHost } from '@databehave/core'
+import {
+  httpPlugin, routesPlugin, corsPlugin, accessLogPlugin, nodeHttpPlugin,
+} from '@databehave/server'
 
-</div>
-
-## Install
-
-You can install `@databehave/server` alone but to get full functionality, the recommended companion is `@databehave/schema`.
-
-```bash
-npm install @databehave/schema @databehave/server
-# or: pnpm add @databehave/schema @databehave/server
-# or: yarn add @databehave/schema @databehave/server
+const host = createHost({ plugins: [
+  httpPlugin(),
+  routesPlugin({ 'GET /hello': () => ({ status: 200, json: { hello: 'world' } }) }),
+  corsPlugin({ origin: () => '*' }),
+  accessLogPlugin(),
+  nodeHttpPlugin({ host: '127.0.0.1', port: 3000 }),
+] })
+await host.start()
+// await host.close() when the application shuts down.
 ```
 
-> `@databehave/schema` is declared as an optional peer dependency. Install it alongside `@databehave/server` whenever you enable auto-schema mode.
+For in-process requests, omit the listener and call
+`host.get(httpCapability).fetch(new Request('http://localhost/hello'))` after startup.
 
-## A 60-second tour
+External plugins declare `requires: [httpCapability]` and register route sources,
+middleware or bind guards during `setup`. Pass `ctx.order` as the contribution order;
+this preserves explicit composition order independently of capability dependency order.
+Route sources materialize once after every plugin has prepared. Explicit routes replace
+generated routes with the same key; equal-priority duplicates fail with both owners.
+Exact paths precede parameterized paths. Parameterized ties use composition order and
+then declaration order.
 
-**1. OpenAPI specs driven data** — realistic mock data derived from your OpenAPI document, with zero config. See [docs/openapi.md](docs/openapi.md) for the `openapi` field reference.
+`http.resolveRoute(method, path)` uses the same precedence and HEAD fallback as dispatch. A route contribution's
+`cors` field can override application CORS, or be `false` when its owner supplies the policy. General CORS only
+handles resolved routes; preflights resolve the `Access-Control-Request-Method` target. Unknown paths receive no
+implicit CORS authorization. This keeps feature-owned admin restrictions effective in either composition order.
 
-**2. Auto-schema mode (`@databehave/schema`)** — realistic distributions, referential integrity, and deterministic seeding. See [docs/openapi/auto-schema.md](docs/openapi/auto-schema.md) for the `schema` field reference (knobs, defaults, install hint).
+The middleware pipeline runs preflight, validation, interception, the selected handler,
+response decoration, and final observation. Short circuits and error responses receive
+decoration once. Error handlers are bounded; an error-handler failure yields a generic
+500. Observation cannot replace a response. HEAD calls an explicit HEAD handler or GET
+fallback once, retains `request.method === 'HEAD'`, exposes `effectiveMethod`, and strips
+the body after decoration. One request produces one observation.
 
-**3. Full custom data** — hand-write response generators as modules, and point routes to them. The module exports a function that receives the request and returns a response shape. You can use `@databehave/schema` or any other data source.
+`terminateTransport()` produces a terminal transport outcome for Node listeners.
+Fetch cannot destroy a connection and reports `UnsupportedTransportError`. Request
+signals cancel on disconnect or host shutdown. Dispatch is admitted only after HTTP's open
+phase and rejects already-aborted callers before executing middleware or handlers. The HTTP
+runtime stops admission synchronously, cancels work, then waits for handlers and returned
+response bodies (EOF, error, or completed cancellation) before dependent resources are disposed.
+HEAD-suppressed bodies are cancelled. Callers must consume or cancel returned bodies.
 
-**4. Admin UI** You have a UI to override any route's response, with the override "sticking" until you remove it. No code change required for error injection.
+Configure the shared shutdown budget with `httpPlugin({ drainTimeoutMs: 1000 })` (1000 ms
+by default). The deadline begins when admission stops and covers both logical requests and
+Node connections; it is not restarted for each drain. The listener force-closes remaining
+connections at that deadline. Uncooperative handlers or body cancellation report a failed
+close instead of claiming a clean drain; callbacks cannot be forcibly stopped by JavaScript.
+The former `nodeHttpPlugin({ drainTimeoutMs })` option moves to `httpPlugin`.
 
-```jsonc
-{
-  "server": {
-    "host": "127.0.0.1",
-    "port": "8000"
-  },
-  // 1. OpenAPI specs driven data
-  "openapi": "./openapi.json",
-  // 2. Auto-schema mode (Adds @databehave/schema data generation engine to OpenAPI specs)
-  "schema": { "enabled": true },
-  // 3. Full custom data
-  "endpoints": {
-    "GET /health": { "response": { "status": 200, "json": { "ok": true } } },
-    "GET /products/list": "./src/routes/products/list.js",
-    "POST /products/bulk-update": "./src/routes/products/bulk-update.js"
-  },
-  // 4. Admin UI: http://[server.host]:[server.port]/[admin.path]
-  "admin": { "enabled": true, "path": "/databehave" },
-}
-```
+Node validates exactly one Host header and the origin-form request target before dispatch.
+Host must use the actual listener port and match its binding, local socket address, or a
+loopback alias for a loopback endpoint. For custom DNS use
+`nodeHttpPlugin({ allowedHosts: ['app.example.test'] })`; entries are explicit hostnames or
+IP literals, without ports, schemes, credentials, paths, or wildcards. Forwarded headers do
+not grant authority. Malformed requests receive 400; unapproved authorities receive 421.
+In-process Fetch requests remain trusted caller-supplied requests.
 
-## Documentation
+Incoming Node bodies are pulled in bounded chunks. Cancelling a body stops intake without
+destroying the response socket, allowing early validation errors to reach uploading clients.
+Incomplete uploads receive `Connection: close`, but remain readable while a response stream
+consumes them. Explicit cancellation arms the rejection cleanup deadline immediately. Otherwise,
+response-source completion stops remaining input and arms cleanup before waiting for the response
+to flush. There is no ordinary response-write timeout; an uncancelled stalled duplex exchange
+remains backpressured until completion, disconnection or bounded host shutdown. Fully read bodies
+retain normal keep-alive behavior.
 
-### Start here
+Feature packages use this same public boundary:
 
-- [Index](docs/index.md) — package TOC and reading order.
-- [Getting Started](docs/getting-started.md) — 5-step tutorial from install to a custom route.
-- [Troubleshooting](docs/troubleshooting.md) — symptom → cause → fix.
+- [OpenAPI](../openapi/README.md): catalogs, selectable generators, validation and mock status policy.
+- [Admin](../admin/README.md): opt-in fault injection, UI/API and scenarios.
+- [CLI](../cli/README.md): explicit ESM composition and process lifecycle.
+- [Core](../core/README.md): capability dependencies and lifecycle.
 
-### Reference
+The upcoming 0.2 release removes the former JSONC configuration and monolithic `createServer` API.
+See the [migration guide](../../MIGRATION.md) for the replacement of each option.
 
-- [Config](docs/config/index.md) — every `databehave.json` field.
-- [Config Validation](docs/config/validation.md) — opt-in inbound request validation (RFC 7807).
-- [Admin](docs/admin/index.md) — admin UI, REST endpoints, matchers, ErrorMode, `x-mock-*` headers, scenarios, security notes.
-- [OpenAPI](docs/openapi/fallback.md) — OAS fallback walker, [Auto-schema](docs/openapi/auto-schema.md), keyword parity.
-- [CLI](docs/cli.md) — `@databehave/server` CLI reference.
-- [Errors](docs/errors.md) — every user-visible error message, source-cited.
-
-### Deeper
-
-- [Design](docs/design.md) — architecture, dispatch pipeline, why the HTTP framework is hidden.
-- [Stability](docs/stability.md) — public-surface lock, SemVer triggers, contract surfaces.
-- [Recipes](docs/recipes.md) — error injection, static responses, programmatic hooks, in-process tests with `fetch()`.
-
-<br /><br />
-<div align="center">
-
-© 2026-present ochairo. See [LICENSE](LICENSE)
-
-</div>
+Requires Node.js 24 or 26; supported majors are 24 and 26. Start with the
+[runnable HTTP example](../../examples/http.mjs) and [plugin author guide](../../docs/plugins.md).

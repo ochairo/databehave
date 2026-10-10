@@ -115,8 +115,8 @@ type Variant = Infer<typeof Variant>
 
 ## Datasets and identity
 
-Generate `n` rows that share a schema and identity keys; same tuple
-always returns the same row:
+Generate `n` rows with unique identity keys. Repeating the same options reproduces the dataset under the
+[determinism contract](stability.md#determinism-contract); identity keys do not create a shared row cache:
 
 ```ts
 import { mockDataset, obj, str, int } from '@databehave/schema'
@@ -135,14 +135,14 @@ const rows = mockDataset({
   n:        100,
 })
 
-// Calling again with the same identity tuple → identical row:
+// Repeating the same options reproduces the dataset:
 const lookup = mockDataset({
   name:     'Catalog',
   schema:   CatalogRow,
   identity: ['group_code', 'item', 'date'],
-  n:        1,
+  n:        100,
 })
-// lookup[0] equals rows[i] for some i with matching identity (when seeds match).
+// lookup deep-equals rows. For a specific identity, query the generated rows.
 ```
 
 ## Cross-dataset foreign keys
@@ -256,138 +256,37 @@ multiplicatively, and dataset generation uses a single retry budget.
 
 ## OpenAPI interop (without a CLI)
 
-databehave intentionally ships no OpenAPI ingestion or codegen in the core
-package. Both directions are short enough to live in your own repo, or
-in a thin sibling package, using `walkSchema` and the builder
-functions.
+The standalone schema runtime has no OpenAPI dependency. The separate
+[`@databehave/openapi`](../../openapi/README.md) package owns the official adapter and operation catalog.
 
 ### databehave → OpenAPI (codegen)
 
-Walk the IR and emit an OpenAPI 3.1 fragment. Drop this in a
-`scripts/emit-openapi.ts` and run it from a `package.json` script.
+There is no complete built-in schema-to-OpenAPI exporter. An application-owned adapter must define mappings for
+every supported kind/behavior and reject unsupported semantics. Use the selected runtime's traversal API to inspect
+nodes; callback paths are arrays of string/number segments, not visitor-context objects:
 
 ```ts
-import { walkSchema, type Schema } from '@databehave/schema'
+import { standardRuntime, obj, int } from '@databehave/schema'
 
-export const toOpenApi = (schema: Schema): unknown => {
-  const stack: any[] = []
-  walkSchema(schema, {
-    enter(node) {
-      switch (node.kind) {
-        case 'int':
-          stack.push({ type: 'integer', minimum: node.min, maximum: node.max })
-          break
-        case 'str':
-          stack.push({ type: 'string', pattern: node.pattern?.source })
-          break
-        case 'decimal':
-          stack.push({ type: 'string', format: `decimal(${node.p},${node.s})` })
-          break
-        case 'arr':
-          stack.push({ type: 'array', items: undefined })
-          break
-        case 'obj':
-          stack.push({ type: 'object', properties: {}, required: [] as string[] })
-          break
-        case 'literal':
-          stack.push({ const: node.value })
-          break
-        case 'discriminated':
-          stack.push({ oneOf: [] as unknown[], discriminator: { propertyName: node.tag } })
-          break
-        default:
-          stack.push({})
-      }
-    },
-    leave(_node, ctx) {
-      const built  = stack.pop()
-      const parent = stack[stack.length - 1]
-      if (!parent) { stack.push(built); return }
-      if (parent.type === 'object') {
-        parent.properties[ctx.key!] = built
-        parent.required.push(ctx.key!)
-      } else if (parent.type === 'array') {
-        parent.items = built
-      } else if (Array.isArray(parent.oneOf)) {
-        parent.oneOf.push(built)
-      }
-    },
-  })
-  return stack[0]
-}
+const User = obj({ id: int().min(1) })
+standardRuntime.walkSchema(User, {
+  enter(node, path) { console.log(path, node.kind) },
+})
 ```
 
-Usage:
-
-```ts
-import { writeFileSync } from 'node:fs'
-import { User, Order } from '../src/api/schemas.js'
-import { toOpenApi } from './to-openapi.js'
-
-const doc = {
-  openapi: '3.1.0',
-  info: { title: 'My API', version: '1.0.0' },
-  components: {
-    schemas: {
-      User:  toOpenApi(User),
-      Order: toOpenApi(Order),
-    },
-  },
-}
-
-writeFileSync('openapi.json', JSON.stringify(doc, null, 2))
-```
+Standard kind IDs include `number` (with `int: true` for integers), `string`, `array` and `object`; builder function
+names are not kind IDs. `SchemaNode` is open, so a standard-only converter must validate/narrow metadata and fail on
+custom kinds it cannot represent. See [schema extensions](extending.md) for reconstruction and contract checks.
 
 ### OpenAPI → databehave (ingestion)
 
-The opposite direction calls databehave's builders directly. Use this in a
-test setup file or msw handler, not at runtime in production.
-
-```ts
-import { obj, str, int, decimal, arr, literal, type Schema } from '@databehave/schema'
-
-export const fromOpenApi = (node: any): Schema => {
-  if (node.const !== undefined) return literal(node.const)
-  if (node.type === 'object') {
-    const fields: Record<string, Schema> = {}
-    for (const [k, v] of Object.entries(node.properties ?? {})) {
-      fields[k] = fromOpenApi(v)
-    }
-    return obj(fields)
-  }
-  if (node.type === 'array')   return arr(fromOpenApi(node.items))
-  if (node.type === 'integer') {
-    return int().min(node.minimum ?? 0).max(node.maximum ?? 2 ** 31 - 1)
-  }
-  if (node.type === 'string') {
-    if (node.format?.startsWith('decimal(')) {
-      const [p, s] = node.format.slice(8, -1).split(',').map(Number)
-      return decimal(p, s)
-    }
-    return node.pattern ? str().pattern(new RegExp(node.pattern)) : str()
-  }
-  throw new Error(`unsupported openapi node: ${JSON.stringify(node)}`)
-}
-```
-
-Usage in a test:
-
-```ts
-import openapi from './openapi.json' with { type: 'json' }
-import { fromOpenApi } from './from-openapi.js'
-import { mock } from '@databehave/schema'
-
-const UserSchema = fromOpenApi(openapi.components.schemas.User)
-const fixture    = mock(UserSchema, { seed: 'user-1' })
-```
+Use `schemaGeneratorPlugin` from `@databehave/openapi/schema` with explicit builders and a schema runtime.
+It compiles response schemas during host preparation and rejects unsupported schemas in strict mode. The
+[OpenAPI guide](../../openapi/README.md) documents supported shapes, seeding, provider selection and the separate
+request-validation contract. Load JSON text in application configuration; convert YAML explicitly if needed.
 
 ### Why this lives outside core
 
-- The core stays zero-dep. OpenAPI ingestion needs a YAML parser (if
-  you accept `.yaml`) or just a JSON import, but the adapter itself is
-  the user's choice.
-- Different teams want different mappings (`format: decimal(10,2)` vs
-  `x-databehave-decimal: [10, 2]`, `nullable: true` vs `oneOf`, etc.).
-  Hard-coding one mapping into core forces a contract on everyone.
-- A future `databehave-openapi` package can iterate on these mappings
-  independently from the core release cycle.
+- Schema-only applications need no HTTP or OpenAPI dependencies.
+- Applications explicitly choose placeholder, schema-backed or external response providers.
+- The OpenAPI package owns translation policy; schema descriptors own generation and validation semantics.

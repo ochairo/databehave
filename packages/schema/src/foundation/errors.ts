@@ -16,12 +16,14 @@
 /**
  * Stable, machine-matchable identifier for a conformance failure.
  *
- * The catalog is **closed and snapshot-locked** by
+ * The standard catalog is **snapshot-locked** by
  * `test/foundation/issue-codes.test.ts`. Each value is a kebab-case,
  * dot-segmented identifier (`'<bucket>.<reason>'` or a bare token
  * for cross-cutting issues) and is part of the SemVer contract:
  *
- * - Adding a new code is `MINOR` (the snapshot test must be updated
+ * Plugins may add namespaced string codes through their registered validators.
+ *
+ * - Adding a new standard code is `MINOR` (the snapshot test must be updated
  *   in the same commit).
  * - Renaming, removing, or changing the meaning of an existing code
  *   is `MAJOR`.
@@ -65,13 +67,14 @@ export type IssueCode =
   | 'tuple.length-mismatch'
   | 'unexpected-null'
   | 'union.no-match'
+  | (string & {})
 
 export type Issue = {
   readonly path: readonly (string | number)[]
   /**
    * Stable, machine-matchable identifier. Use this — together with
    * {@link Issue.path} — for programmatic assertions and runtime
-   * branching. See {@link IssueCode} for the closed catalog.
+   * branching. See {@link IssueCode} for the standard catalog and extension contract.
    */
   readonly code: IssueCode
   /**
@@ -136,7 +139,7 @@ export class SchemaConflictError extends DataBehaveError {
   /**
    * Optional, machine-matchable identifier for cross-cutting failures
    * raised outside the conform pipeline (e.g. `'serialize.closure-axis'`
-   * thrown by {@link serializeSchema} when an axis carries a non-JSON
+   * thrown by `serializeSchema` when an axis carries a non-JSON
    * function value). Free-form `'<bucket>.<reason>'` slugs; not part of
    * the closed {@link IssueCode} catalog because they describe builder /
    * codec misuse rather than runtime conformance.

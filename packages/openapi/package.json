@@ -1,0 +1,58 @@
+{
+  "name": "@databehave/openapi",
+  "version": "0.1.0",
+  "description": "Composable OpenAPI catalog, mock generation and request conformance plugins",
+  "type": "module",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ochairo/databehave.git",
+    "directory": "packages/openapi"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./schema": {
+      "types": "./dist/schema.d.ts",
+      "import": "./dist/schema.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "CHANGELOG.md"
+  ],
+  "engines": {
+    "node": "^24.0.0 || ^26.0.0"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p tsconfig.build.json --noEmit",
+    "test": "vitest run --coverage",
+    "test:no-coverage": "vitest run",
+    "clean": "rm -rf dist coverage"
+  },
+  "dependencies": {
+    "@databehave/core": "workspace:^",
+    "@databehave/server": "workspace:^"
+  },
+  "peerDependencies": {
+    "@databehave/schema": "^0.2.0"
+  },
+  "peerDependenciesMeta": {
+    "@databehave/schema": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@databehave/schema": "workspace:*",
+    "@types/node": "^25.9.1",
+    "@vitest/coverage-v8": "3.2.6",
+    "typescript": "^6.0.3",
+    "vitest": "^3.2.6"
+  }
+}

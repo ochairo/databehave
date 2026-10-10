@@ -21,12 +21,15 @@ const rows = mockDataset({
 
 `mockDataset(opts)` returns `n` rows whose identity tuples are
 guaranteed unique and whose aggregate invariants (if any) all hold.
-The result is `Infer<S>[]` where `S` is the per-record schema.
+The result is `Infer<S>[]` where `S` is the per-record schema. For custom kinds/behaviors, call
+`runtime.mockDataset(opts)` so every row uses that runtime; root `mockDataset` uses `standardRuntime`.
 
 Source:
-[`src/dataset/dataset.ts`](../../src/dataset/dataset.ts).
+[`src/dataset/generate.ts`](../../src/dataset/generate.ts).
 
 ---
+
+<a id="mockdataset"></a>
 
 ## `mockDataset(opts)`
 
@@ -124,7 +127,7 @@ Raise `n`'s domain, narrow `n`, or relax invariants to recover.
 
 ## Errors
 
-`mockDataset` throws exactly one error class:
+Dataset retry exhaustion reports:
 
 - [`SchemaConflictError`](../foundation/types.md#schemaconflicterror)
   — when the retry budget is exhausted (identity collisions or
@@ -136,6 +139,7 @@ Per-record sampling errors raised by
 [`mock()`](../generator/sampling.md#mock) (e.g. an unsatisfiable
 single-record `.invariant`, `int().min(10).max(5)`) propagate
 unchanged — they are not wrapped.
+Exceptions from aggregate callbacks also propagate unchanged.
 
 Validation never runs inside `mockDataset`; pair it with
 [`parse`](../validator/api.md#parse) at your boundary if the dataset

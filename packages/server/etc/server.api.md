@@ -4,45 +4,26 @@
 
 ```ts
 
+import { Capability } from '@databehave/core';
+import { Plugin as Plugin_2 } from '@databehave/core';
+
 // @public
-export interface AdminModeConfig {
-    allowDestroy?: boolean;
-    bind?: 'loopback-only' | 'any';
-    cors?: AdminModeCors;
-    enabled?: boolean;
-    headers?: boolean;
-    openapiBody?: string;
-    openBrowserOnStart?: boolean;
-    path?: string;
-    scenariosDir?: string;
-    ui?: boolean;
+export interface AccessLogOptions extends LogFormatOptions {
+    // (undocumented)
+    readonly filter?: (observation: HttpObservation) => boolean;
+    // (undocumented)
+    readonly write?: (line: string) => void;
 }
 
 // @public
-export type AdminModeCors = 'auto' | 'any' | 'same-origin' | {
-    origin: string | readonly string[];
-};
+export const accessLogPlugin: (options?: AccessLogOptions) => Plugin_2;
 
 // @public
-export interface Config {
-    admin?: AdminModeConfig;
-    cors?: CorsConfig;
-    hooks?: {
-        onRequest?: (req: MockRequest) => MockResponse | void | Promise<MockResponse | void>;
-        onResponse?: (req: MockRequest, res: MockResponse) => MockResponse | void | Promise<MockResponse | void>;
-        onError?: (req: MockRequest, err: unknown) => MockResponse | Promise<MockResponse>;
-        onServerError?: (err: Error) => void;
-    };
-    // Warning: (ae-forgotten-export) The symbol "LogConfig" needs to be exported by the entry point index.d.ts
-    log?: LogConfig;
-    onOpenApiEmptySchema?: (method: Method, routePath: string, status: number) => void;
-    onOpenApiWalkError?: (method: Method, routePath: string, err: unknown) => void;
-    openapi?: string;
-    routes?: Partial<Record<RouteKey, Handler>>;
-    validation?: {
-        request?: boolean;
-        maxBodyBytes?: number;
-    };
+export interface BindGuard {
+    // (undocumented)
+    check(bind: HttpBind): void | Promise<void>;
+    // (undocumented)
+    readonly owner: string;
 }
 
 // @public
@@ -55,152 +36,124 @@ export interface CorsConfig {
     origin?: (origin: string) => string;
 }
 
-// @public (undocumented)
-export const createServer: (config: Config) => Server;
-
 // @public
-export const defineConfig: (config: Config) => Config;
-
-// @public
-export interface EndpointResponse {
-    // (undocumented)
-    empty?: boolean;
-    // (undocumented)
-    headers?: Record<string, string>;
-    // (undocumented)
-    json?: unknown;
-    // (undocumented)
-    status: number;
-}
-
-// @public
-export type EndpointSpec = string | {
-    handler: string;
-    status?: number;
-    response?: never;
-} | {
-    response: EndpointResponse;
-    handler?: never;
-    status?: never;
-};
-
-// @public
-export type ErrorMode = {
-    kind: 'http-status';
-    status: number;
-} | {
-    kind: 'business-failure';
-    message: string;
-    extra?: Record<string, unknown>;
-} | {
-    kind: 'custom-body';
-    status?: number;
-    body: unknown;
-    contentType?: string;
-} | {
-    kind: 'empty-body';
-    status?: number;
-} | {
-    kind: 'malformed-json';
-    status?: number;
-} | {
-    kind: 'delay';
-    ms: number;
-    then?: Exclude<ErrorMode, {
-        kind: 'delay';
-    } | {
-        kind: 'hang';
-    } | {
-        kind: 'destroy';
-    }>;
-} | {
-    kind: 'hang';
-} | {
-    kind: 'destroy';
-};
+export const corsPlugin: (options?: CorsConfig) => Plugin_2;
 
 // @public
 export type Handler = (req: MockRequest) => MockResponse | Promise<MockResponse>;
 
 // @public
-export interface JsonConfig {
-    admin?: Config['admin'];
-    basePath?: string;
-    cors?: Omit<CorsConfig, 'origin'> & {
-        origin?: string | readonly string[];
-    };
-    endpoints?: Partial<Record<string, EndpointSpec>>;
-    log?: Config['log'];
-    mockMode?: MockModeConfig;
-    openapi?: string;
-    schema?: {
-        enabled: boolean;
-        seed?: number | 'stable' | 'random';
-        locale?: string;
-        arrayCount?: number;
-    };
-    server?: {
-        host?: string;
-        port?: number;
-    };
-    validation?: Config['validation'];
-}
-
-// @public
-export interface ListenHandle {
-    close(): Promise<void>;
+export interface HttpBind {
+    // (undocumented)
     readonly host: string;
+    // (undocumented)
     readonly port: number;
 }
 
+// @public (undocumented)
+export const httpCapability: Capability<HttpRuntime>;
+
 // @public
-export interface ListenOptions {
-    host?: string;
-    port?: number;
+export interface HttpListener {
+    // (undocumented)
+    readonly address: HttpBind | undefined;
 }
 
 // @public
-export const loadConfig: (configPath: string, options?: LoadConfigOptions) => Promise<LoadedConfig>;
+export type HttpMiddleware = {
+    readonly owner: string;
+    readonly order: number;
+} & ({
+    readonly stage: 'preflight' | 'validation' | 'interception';
+    readonly handle: (request: MockRequest) => MockResponse | void | Promise<MockResponse | void>;
+} | {
+    readonly stage: 'decoration';
+    readonly handle: (request: MockRequest, response: MockResponse) => MockResponse | void | Promise<MockResponse | void>;
+} | {
+    readonly stage: 'error';
+    readonly handle: (request: MockRequest, error: unknown) => MockResponse | void | Promise<MockResponse | void>;
+} | {
+    readonly stage: 'observation';
+    readonly handle: (observation: HttpObservation) => void | Promise<void>;
+});
 
 // @public
-export interface LoadConfigOptions {
-    handlers?: Record<string, Handler>;
-    logger?: {
-        warn(message: string): void;
-    };
+export interface HttpObservation {
+    // (undocumented)
+    readonly durationMs: number;
+    // (undocumented)
+    readonly error?: unknown;
+    // (undocumented)
+    readonly outcome: HttpOutcome;
+    // (undocumented)
+    readonly request: MockRequest;
 }
 
 // @public
-export interface LoadedConfig {
-    readonly config: Config;
-    readonly server: {
-        host: string;
-        port: number;
-    };
+export interface HttpOptions {
+    // (undocumented)
+    readonly drainTimeoutMs?: number;
 }
 
 // @public
-export type Method = 'get' | 'post' | 'put' | 'delete' | 'patch';
+export type HttpOutcome = {
+    readonly kind: 'response';
+    readonly response: Response;
+} | {
+    readonly kind: 'terminate';
+    readonly reason: string;
+};
+
+// @public
+export const httpPlugin: (options?: HttpOptions) => Plugin_2;
+
+// @public
+export interface HttpRuntime {
+    // (undocumented)
+    checkBind(bind: HttpBind): Promise<void>;
+    // (undocumented)
+    dispatch(request: Request): Promise<HttpOutcome>;
+    // (undocumented)
+    readonly drainDeadline: number | undefined;
+    readonly drainTimeoutMs: number;
+    // (undocumented)
+    fetch(request: Request): Promise<Response>;
+    // (undocumented)
+    registerBindGuard(guard: BindGuard): void;
+    // (undocumented)
+    registerMiddleware(middleware: HttpMiddleware): void;
+    // (undocumented)
+    registerRoutes(source: RouteSource): void;
+    resolveRoute(method: string, path: string): ResolvedRoute | undefined;
+    // (undocumented)
+    readonly routes: readonly ResolvedRoute[];
+}
+
+// @public
+export class HttpTransportTermination extends Error {
+    constructor(message?: string);
+}
 
 // @public (undocumented)
-export interface MockModeConfig {
-    allowHeaderOverride?: boolean;
-    defaultStatus?: number;
-    enabled?: boolean;
-    header?: string;
-    healthPaths?: readonly string[];
-    logger?: MockModeLogger;
-    pathOverrides?: Record<string, number>;
+export const listenerCapability: Capability<HttpListener>;
+
+// @public
+export interface LogFormatOptions {
+    // (undocumented)
+    readonly colors?: 'auto' | 'always' | 'never';
+    // (undocumented)
+    readonly format?: 'pretty' | 'json';
 }
 
 // @public
-export interface MockModeLogger {
-    // (undocumented)
-    warn(message: string): void;
-}
+export const matchPattern: (pattern: RoutePattern, requestPath: string) => Record<string, string> | null;
+
+// @public
+export type Method = 'get' | 'post' | 'put' | 'delete' | 'patch' | 'head' | 'options';
 
 // @public
 export interface MockRequest {
+    readonly effectiveMethod: ObservedMethod;
     readonly headers: Readonly<Record<string, string>>;
     json<T = unknown>(): Promise<T>;
     // (undocumented)
@@ -210,6 +163,7 @@ export interface MockRequest {
     readonly query: Readonly<Record<string, string>>;
     readonly queryAll: Readonly<Record<string, readonly string[]>>;
     raw(): globalThis.Request;
+    readonly signal: AbortSignal;
     text(): Promise<string>;
     readonly url: string;
 }
@@ -254,71 +208,102 @@ export type MockResponseBody = {
 };
 
 // @public
-export type ObservedMethod = Method | 'options' | 'head';
+export interface NodeHttpOptions {
+    // (undocumented)
+    readonly allowedHosts?: readonly string[];
+    // (undocumented)
+    readonly host?: string;
+    // (undocumented)
+    readonly onServerError?: (error: Error) => void;
+    // (undocumented)
+    readonly port?: number;
+}
 
 // @public
-export type OverrideMatcher = {
-    kind: 'exact';
-    method: string;
-    path: string;
+export const nodeHttpPlugin: (options?: NodeHttpOptions) => Plugin_2;
+
+// @public
+export type ObservedMethod = Method;
+
+// @public
+export interface ParsedRouteKey {
+    // (undocumented)
+    readonly method: Method;
+    // (undocumented)
+    readonly path: string;
+}
+
+// @public
+export const parseRouteKey: (key: RouteKey) => ParsedRouteKey;
+
+// @public
+export const parseRoutePattern: (path: string) => RoutePattern;
+
+// @public
+export type PatternSegment = {
+    readonly kind: 'static';
+    readonly value: string;
 } | {
-    kind: 'path';
-    path: string;
-} | {
-    kind: 'global';
-    methods?: readonly string[];
+    readonly kind: 'param';
+    readonly name: string;
 };
 
 // @public
-export const resolveStatus: (method: string, path: string, config: MockModeConfig) => number | undefined;
+export interface ResolvedRoute extends RouteDefinition {
+    // (undocumented)
+    readonly method: Method;
+    // (undocumented)
+    readonly owner: string;
+    // (undocumented)
+    readonly path: string;
+}
+
+// @public
+export interface RouteDefinition {
+    readonly cors?: CorsConfig | false;
+    // (undocumented)
+    readonly handler: Handler;
+    // (undocumented)
+    readonly key: RouteKey;
+    // (undocumented)
+    readonly metadata?: Readonly<Record<string, unknown>>;
+    // (undocumented)
+    readonly priority: 'explicit' | 'generated';
+    // (undocumented)
+    readonly source?: string;
+}
 
 // @public
 export type RouteKey = `${Uppercase<Method>} /${string}`;
 
 // @public
-export const run: (opts: RunOptions) => Promise<RunHandle>;
-
-// @public
-export interface RunHandle {
-    close(): Promise<void>;
-    url: string;
+export interface RoutePattern {
+    readonly isStatic: boolean;
+    readonly path: string;
+    readonly segments: readonly PatternSegment[];
 }
 
 // @public
-export interface RunOptions {
-    config: string;
-    open?: boolean;
+export interface RouteSource {
+    // (undocumented)
+    materialize(): readonly RouteDefinition[];
+    // (undocumented)
+    readonly order: number;
+    // (undocumented)
+    readonly owner: string;
 }
 
-// @public (undocumented)
-export const seedFor: (i: SeedInput) => string;
+// @public
+export const routesPlugin: (routes: Readonly<Partial<Record<RouteKey, Handler>>>, id?: string) => Plugin_2;
 
 // @public
-export type SeedInput = {
-    endpoint: string;
-    from?: string;
-    dayOffset?: number;
-    extra?: Record<string, unknown>;
-};
+export const terminateTransport: (reason?: string) => never;
 
 // @public
-export interface Server {
-    fetch(req: globalThis.Request): Promise<globalThis.Response>;
-    listen(opts?: ListenOptions): Promise<ListenHandle>;
-}
-
-// @public (undocumented)
-export interface StickyOverride {
+export class UnsupportedTransportError extends Error {
+    constructor(reason: string);
     // (undocumented)
-    readonly createdAt: string;
-    // (undocumented)
-    readonly description?: string;
-    // (undocumented)
-    readonly id: string;
-    // (undocumented)
-    readonly matcher: OverrideMatcher;
-    // (undocumented)
-    readonly mode: ErrorMode;
+    readonly reason: string;
 }
 
 // (No @packageDocumentation comment for this package)

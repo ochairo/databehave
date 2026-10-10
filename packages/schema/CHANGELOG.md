@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+Upcoming package version: **0.2.0**. This section describes planned release contents, not a published release.
+
+### Breaking changes
+
+- Require Node.js 24 or 26; support and test majors 24 and 26. Drop Node.js 18, 20 and 22.
+- Replace the closed IR node union with open `SchemaNode` and built-in `StandardSchemaNode` contracts. Serialized IR
+  version 2 records exact kind/behavior contracts; version 1 requires explicit migration.
+- Allow plugin-defined issue codes and enforce primitive invariants during validation.
+
+### Added
+
+- Sealed instance-local kind and behavior registries, typed descriptors, scoped sampling and runtime methods for
+  nested generation, validation, datasets, traversal, replay and serialization.
+- `/runtime`, `/standard` and optional `/plugin` entry points. Standard convenience builders/functions remain available.
+- Public plugin, runtime support and migration guides, plus runnable public API examples.
+
+See [migration](../../MIGRATION.md) and [release procedures](../../docs/releasing.md).
+
 ## [0.1.0] - 2026-06-03
 
 Initial public release of `@databehave/schema`.
