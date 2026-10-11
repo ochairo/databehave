@@ -87,21 +87,30 @@ For programmatic use, call `createHost({ plugins })`, await `host.start()`, obta
 
 ## Development
 
-The project development container owns Node, pnpm, TypeScript, the language server and headless Chromium.
-It mounts this checkout at its canonical absolute path. If checking out elsewhere, update the Compose working
-directory, bind source/target and `io.dotfiles.project-root` label together.
+One `container` service provides Node, pnpm, TypeScript, the language server and headless Chromium for all six packages.
+Compose generates container names from the project, service and instance number (normally `databehave_container_1`).
+Run Compose from the real checkout root, not a symlinked path. It uses the shell's existing `PWD` to mount the checkout
+at the same path inside the container and label it for Neovim; no environment-variable setup or path edits are needed.
 
 ```sh
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null build
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null up -d
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm install --frozen-lockfile
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm build
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm typecheck
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm test
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm lint
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null exec -T development pnpm test:e2e
-env -u CONTAINER_CONNECTION -u DOCKER_HOST podman-compose --env-file /dev/null down
+podman compose up -d --build container
+podman compose exec -T container pnpm install --frozen-lockfile
+podman compose exec -T container pnpm build
+podman compose exec -T container pnpm typecheck
+podman compose exec -T container pnpm test
+podman compose exec -T container pnpm lint
+podman compose exec -T container pnpm test:e2e
+podman compose down
 ```
+
+For an agent's separate worktree, run Compose from that worktree's real root with a unique project name, for example
+`podman compose -p databehave-agent-task1 up -d --build container`. Use the same `-p` value for its `exec` and `down`
+commands. This keeps its containers and network separate and mounts that worktree instead of the main checkout.
+
+`containers/Containerfile` defines the toolchain. Root-level `compose.yaml` keeps the startup command short, and
+`.containerignore` stays at the build-context root to allow only the Containerfile and shared actionlint installer.
+Source and dependencies stay in the mounted checkout. The service stays
+running for editor tools and `exec` commands; it does not start an application server or install dependencies on startup.
 
 Run `pnpm api:check`, `pnpm docs:check`, `pnpm examples:check`, `pnpm test:tooling` and `pnpm workflow:check`
 in the development container. Package checks consume a prepared bundle with

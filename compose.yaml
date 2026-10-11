@@ -2,20 +2,20 @@ x-podman:
   in_pod: false
 
 services:
-  development:
+  container:
     build:
       context: .
-      dockerfile: Containerfile
-    image: localhost/databehave-development:plugin-migration
+      dockerfile: containers/Containerfile
     user: "1000:1000"
     userns_mode: "keep-id:uid=1000,gid=1000"
-    working_dir: /home/ochairo/projects/ochairo/databehave
+    init: true
+    working_dir: ${PWD:?Run podman compose from the real checkout root}
     labels:
-      io.dotfiles.project-root: /home/ochairo/projects/ochairo/databehave
+      io.dotfiles.project-root: ${PWD:?Run podman compose from the real checkout root}
     volumes:
       - type: bind
-        source: /home/ochairo/projects/ochairo/databehave
-        target: /home/ochairo/projects/ochairo/databehave
+        source: .
+        target: ${PWD:?Run podman compose from the real checkout root}
         bind:
           selinux: z
     cap_drop:

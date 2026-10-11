@@ -1,17 +1,8 @@
-.git
-node_modules
-**/node_modules
-**/dist
-**/dist-test
-**/coverage
-artifacts
-test-results
-**/.env
-**/.env.*
-**/*.key
-**/*.pem
-**/id_*
-.pnpm-store
-.aws
-.codex
-.agents
+# The image needs only its definition and the workflow-validator installer.
+**
+!containers/
+containers/**
+!containers/Containerfile
+!scripts/
+scripts/**
+!scripts/install-actionlint.mjs
