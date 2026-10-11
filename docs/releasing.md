@@ -81,19 +81,42 @@ in YAML does not establish those external protections. No workflow in this repos
 
 Configure npm trusted publishing separately for **each** of the six packages: repository `ochairo/databehave`, workflow
 `cd.yml`, environment `npm`, on GitHub-hosted runners. Explicitly permit direct publishing; newer npm publisher
-configurations default to staged publishing. New packages may require an operator's initial publication/registration
-before their trusted-publisher settings are available. Do not add a token fallback to bypass missing configuration.
+configurations default to staged publishing. Packages must exist on npm before trusted publishing can be configured;
+use the explicit bootstrap procedure below for their first release. The default OIDC mode has no token fallback.
 See [npm trusted publishing](https://docs.npmjs.com/trusted-publishers/) for current setup requirements.
 
-The workflow uses npm OIDC and provenance; it requires no `NPM_TOKEN` secret. Only the final publishing job receives
+The default workflow mode uses npm OIDC and provenance; it requires no `NPM_TOKEN` secret. Only the final publishing job receives
 `id-token: write`. That job performs no dependency installation, build, consumer execution or package lifecycle hooks.
 Helpers come from the checked-out source revision, never from executable files inside the downloaded artifact.
+
+## First release with a temporary token
+
+When packages do not exist yet, use `bootstrap: true` to enable token authentication for the first release. This mode
+publishes all six versions from the same CI-verified bundle, including new versions of existing packages. It does not
+skip already published versions or retry a failed publication. The pinned npm CLI may prefer OIDC where trust is already
+configured; the token supplies authentication for packages without that trust.
+
+1. Create a short-lived npm granular access token with **Packages and scopes: Read and write (publish and stage)**
+   for the `@databehave` scope and **Bypass two-factor authentication** for unattended publication. The account must
+   have permission to create and publish packages in that scope; organization-management permission alone is insufficient.
+2. Store it as the GitHub secret `NPM_TOKEN`, preferably in the protected `npm` environment. A repository secret with
+   that name also works. Never put the token in a workflow input, source file, or command argument.
+3. Run `cd.yml` on reviewed `main` with `dry_run: true`. This validates the bundle but does not test credentials.
+4. For actual first publication, run `cd.yml` on the same reviewed revision with `dry_run: false` and `bootstrap: true`.
+   Approve the environment deployment if required. A missing secret stops before any package is published.
+5. After all six packages are published, configure each package's trusted publisher as described above, revoke the npm
+   token, and delete the GitHub secret. Leave `bootstrap: false` for subsequent releases with new package versions.
+
+Only the bootstrap publishing step receives the token; CI and the default OIDC publishing step do not. Both modes retain
+artifact verification, provenance, disabled lifecycle scripts, and the same release gates. If publication fails, follow
+the partial-publication procedure below before another attempt. See [npm token permissions](https://docs.npmjs.com/creating-and-viewing-access-tokens/)
+and [npm CI/CD authentication](https://docs.npmjs.com/using-private-packages-in-a-ci-cd-workflow/) for current requirements.
 
 ## Manual release
 
 Run [cd.yml](../.github/workflows/cd.yml) from the reviewed `main` revision with its default `dry_run: true` first.
 It invokes the same-revision reusable CI workflow and retains the validated bundle. Real publication requires an
-explicit dispatch with `dry_run: false` and any configured environment approval. It reruns the gates, then publishes
+explicit dispatch with `dry_run: false`, `bootstrap: false` for OIDC, and any configured environment approval. It reruns the gates, then publishes
 that run's verified artifact; it does not reuse a previous dry run's artifact or rebuild inside the publisher.
 
 The publisher downloads the exact artifact ID returned by CI in the same workflow run, verifies its revision and every

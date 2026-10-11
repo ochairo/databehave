@@ -76,7 +76,7 @@ profile databehave-playwright "${browsers[0]}" flags=(unconfined) {
   }
 })
 
-test('publishing is a same-revision CI-gated effect with no install/build or token secret', async () => {
+test('publishing is a same-revision CI-gated effect with no install/build', async () => {
   const cd = await workflow('cd')
   assert.equal(cd.on.workflow_dispatch.inputs.dry_run.default, true)
   assert.equal(cd.jobs.verify.uses, './.github/workflows/ci.yml')
@@ -88,10 +88,78 @@ test('publishing is a same-revision CI-gated effect with no install/build or tok
   assert.equal(cd.permissions['id-token'], undefined)
   assert.equal(publish.permissions['id-token'], 'write')
   const steps = JSON.stringify(publish.steps)
-  assert.doesNotMatch(steps, /npm install|pnpm |secrets\.|NODE_AUTH_TOKEN|npm run|npm ci/)
+  assert.doesNotMatch(steps, /npm install|pnpm |npm run|npm ci/)
   assert.match(steps, /needs\.verify\.outputs\.release-artifact-id/)
   assert.match(steps, /node scripts\/release\.mjs publish/)
   assert.ok(!('secrets' in cd.jobs.verify))
+})
+
+test('only explicitly selected bootstrap publication receives the npm secret', async () => {
+  const cd = await workflow('cd')
+  assert.deepEqual(cd.on.workflow_dispatch.inputs.bootstrap, {
+    description: 'Enable NPM_TOKEN for the first release before trusted publishing is configured',
+    type: 'boolean', default: false,
+  })
+  assert.doesNotMatch(JSON.stringify({ env: cd.env, verify: cd.jobs.verify, publishEnv: cd.jobs.publish.env }), /secrets\.|NODE_AUTH_TOKEN/)
+  const steps = cd.jobs.publish.steps
+  const setup = steps.find(step => step.uses?.startsWith('actions/setup-node@'))
+  assert.equal(setup.with['registry-url'], "${{ inputs.bootstrap && 'https://registry.npmjs.org' || '' }}")
+  const publishing = steps.filter(step => step.run?.includes('node scripts/release.mjs publish'))
+  assert.equal(publishing.length, 2)
+  const [oidc, bootstrap] = publishing
+  assert.equal(oidc.if, '${{ inputs.bootstrap == false }}')
+  assert.equal(bootstrap.if, '${{ inputs.bootstrap == true }}')
+  assert.equal(bootstrap.shell, 'bash')
+  assert.equal(bootstrap['continue-on-error'], undefined)
+  assert.deepEqual(bootstrap.env, {
+    SOURCE_REVISION: '${{ github.sha }}', NODE_AUTH_TOKEN: '${{ secrets.NPM_TOKEN }}',
+  })
+  assert.equal(oidc.run, 'node scripts/release.mjs publish artifacts/release "$SOURCE_REVISION"')
+  for (const step of steps.filter(step => step !== bootstrap)) {
+    assert.doesNotMatch(JSON.stringify(step), /secrets\.|NODE_AUTH_TOKEN/)
+  }
+})
+
+test('bootstrap requires a token and propagates publishing failures without exposing it', async t => {
+  const cd = await workflow('cd')
+  const bootstrap = cd.jobs.publish.steps.find(step => step.if === '${{ inputs.bootstrap == true }}')
+  for (const scenario of [
+    { name: 'missing token', token: undefined, publishStatus: 0, status: 1 },
+    { name: 'empty secret overrides setup-node placeholder', token: '', publishStatus: 0, status: 1 },
+    { name: 'configured token', token: 'synthetic-test-value', publishStatus: 0, status: 0 },
+    { name: 'publishing failure', token: 'synthetic-test-value', publishStatus: 23, status: 23 },
+  ]) {
+    await t.test(scenario.name, async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'databehave-bootstrap-'))
+      try {
+        const sourceSha = 'a'.repeat(40)
+        // Replace the release command so these checks cannot publish or authenticate.
+        const result = spawnSync('bash', ['--noprofile', '--norc', '-euo', 'pipefail', '-c', `
+          node() {
+            printf '%s\\n' "$@" >> "$TEST_DIR/invocation"
+            return "$TEST_PUBLISH_STATUS"
+          }
+          ${bootstrap.run}
+        `], {
+          encoding: 'utf8', timeout: 5000,
+          env: {
+            PATH: '/usr/bin:/bin', SOURCE_REVISION: sourceSha, TEST_DIR: directory,
+            TEST_PUBLISH_STATUS: String(scenario.publishStatus),
+            ...(scenario.token === undefined ? {} : { NODE_AUTH_TOKEN: scenario.token }),
+          },
+        })
+        assert.ifError(result.error)
+        assert.equal(result.status, scenario.status, result.stderr)
+        if (!scenario.token) {
+          assert.match(result.stderr, /Bootstrap publication requires the NPM_TOKEN GitHub secret/)
+          await assert.rejects(readFile(join(directory, 'invocation')), { code: 'ENOENT' })
+        } else {
+          assert.equal(await readFile(join(directory, 'invocation'), 'utf8'), `scripts/release.mjs\npublish\nartifacts/release\n${sourceSha}\n`)
+          assert.ok(!`${result.stdout}${result.stderr}`.includes(scenario.token))
+        }
+      } finally { await rm(directory, { recursive: true, force: true }) }
+    })
+  }
 })
 
 test('both supported runtimes test source and the exact release artifact', async () => {
