@@ -1,6 +1,6 @@
 {
   "name": "@databehave/schema",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Schemas for how data behaves, not just its shape.",
   "type": "module",
   "author": "ochairo",
@@ -72,7 +72,7 @@
   },
   "dependencies": {},
   "peerDependencies": {
-    "@databehave/core": "^0.1.0"
+    "@databehave/core": "^0.2.0"
   },
   "devDependencies": {
     "typescript": "6.0.3",

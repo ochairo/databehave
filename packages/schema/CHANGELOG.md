@@ -7,7 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-Upcoming package version: **0.2.0**. This section describes planned release contents, not a published release.
+Upcoming package version: **0.3.0**. This section describes planned release contents, not a published release.
+
+### Breaking changes
+
+- Require Node.js 24.22.1+ within 24.x or 26.12.1+ within 26.x to enforce the updated security patch floors.
+- Update the optional `@databehave/core` peer range to `^0.2.0` for plugin composition.
+
+### Changed
+
+- Refresh the shared build, test and release tooling dependencies.
+
+See [migration](../../MIGRATION.md) and [release procedures](../../docs/releasing.md).
+
+## [0.2.0]
 
 ### Breaking changes
 

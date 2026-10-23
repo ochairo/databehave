@@ -1,6 +1,6 @@
 {
   "name": "@databehave/core",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Instance-local typed plugin composition and application lifecycle.",
   "type": "module",
   "license": "MIT",
