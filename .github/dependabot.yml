@@ -20,7 +20,7 @@ updates:
           - patch
 
   - package-ecosystem: docker
-    directory: "/"
+    directory: "/containers"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
