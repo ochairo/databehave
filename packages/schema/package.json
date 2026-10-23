@@ -76,7 +76,7 @@
   },
   "devDependencies": {
     "typescript": "6.0.3",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.5",
     "@databehave/core": "workspace:*"
   },
   "publishConfig": {
