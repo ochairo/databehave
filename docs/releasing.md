@@ -1,8 +1,12 @@
 # Releasing Databehave
 
-The upcoming release supports Node 24 and 26. Node 18, 20 and 22 are no longer supported.
+The upcoming release supports Node 24.22.1+ within 24.x and Node 26.12.1+ within 26.x.
+Node 25, older majors, and releases below these security patch floors are unsupported.
+Use the latest security patch within a supported major. Raise the engine floors and pinned CI versions when
+new Node security releases require it; a maintained major alone does not establish that an older patch is secure.
+The workspace enables pnpm engine enforcement so unsupported runtimes fail dependency installation.
 Package engines explicitly select the supported even-numbered majors; a new major needs CI evidence before inclusion.
-Development and release preparation use Node 24.21.0. Publication uses its bundled npm 11.19.0.
+Development and release preparation use Node 24.22.1. Publication uses its bundled npm 11.19.1.
 
 ## Release ownership
 
@@ -35,7 +39,7 @@ They do not establish that arbitrary package code is benign.
 ## Dependency signature scope
 
 `pnpm signatures:check` projects every exact registry identity from `pnpm-lock.yaml` into an isolated, metadata-only
-npm tree, including aliases and platform alternatives. The pinned npm 11.19.0 CLI verifies registry signatures and
+npm tree, including aliases and platform alternatives. The pinned npm 11.19.1 CLI verifies registry signatures and
 available attestations; missing signatures, invalid signatures, network failures and incomplete coverage fail CI.
 This avoids npm misreading aliased peer dependencies in pnpm’s installed tree. No packages or scripts are installed.
 The invocation uses empty isolated npm configuration and does not inherit credentials or scoped registry settings.

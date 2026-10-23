@@ -18,8 +18,9 @@ application needs no schema library or admin assets.
 
 ## Start a mock server
 
-The upcoming release requires Node.js 24 or 26. Supported and tested majors are 24 and 26;
-Node.js 18, 20 and 22 are no longer supported. Newer majors are not covered until added to the test matrix.
+The upcoming release requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x). Supported and tested majors are 24 and 26;
+Node.js 25 and older releases below these security patch floors are unsupported. Newer majors are not covered until added to the test matrix.
+Use the latest security patch within a supported major; minimum versions are raised when security releases require it.
 
 ```sh
 npm install --save-dev @databehave/core @databehave/server @databehave/cli

@@ -85,5 +85,5 @@ Feature packages use this same public boundary:
 The upcoming 0.2 release removes the former JSONC configuration and monolithic `createServer` API.
 See the [migration guide](../../MIGRATION.md) for the replacement of each option.
 
-Requires Node.js 24 or 26; supported majors are 24 and 26. Start with the
+Requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x); supported majors are 24 and 26. Start with the
 [runnable HTTP example](../../examples/http.mjs) and [plugin author guide](../../docs/plugins.md).

@@ -1,7 +1,7 @@
 # Databehave documentation
 
 Databehave composes data generation and HTTP features through explicit plugins. The upcoming release
-requires Node.js 24 or 26; supported and tested majors are 24 and 26.
+requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x); supported and tested majors are 24 and 26.
 
 - [Quickstart](../README.md#start-a-mock-server): create an ESM configuration, then run the CLI.
 - [Migration](../MIGRATION.md): replace the previous server/JSONC API and migrate serialized schemas.

@@ -2,7 +2,7 @@
 
 Explicit, typed plugin composition with no product dependencies or global registry.
 
-Requires Node.js 24 or 26; supported majors are 24 and 26. See the
+Requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x); supported majors are 24 and 26. See the
 [plugin author guide](../../docs/plugins.md) and [runnable plugin example](../../examples/plugin.mjs).
 
 ```ts

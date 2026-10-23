@@ -12,6 +12,22 @@ const extension = (setup: (http: HttpRuntime, order: number) => void, id = 'exte
 })
 
 describe('plugin HTTP pipeline', () => {
+  it('omits undefined optional handlers from dispatch and route discovery', async () => {
+    const host = createHost({ plugins: [httpPlugin(), routesPlugin({
+      'GET /enabled': () => ({ text: 'enabled' }),
+      'GET /disabled': undefined,
+    })] })
+    await host.start()
+    try {
+      const http = host.get(httpCapability)
+      expect(http.routes.map((route) => route.path)).toEqual(['/enabled'])
+      expect(await (await http.fetch(request('GET', '/enabled'))).text()).toBe('enabled')
+      const disabled = await http.fetch(request('GET', '/disabled'))
+      expect(disabled.status).toBe(404)
+      expect(await disabled.json()).toMatchObject({ error: 'not_found' })
+    } finally { await host.close() }
+  })
+
   it('materializes prepared sources once, applies priority, and seals registration', async () => {
     let prepared = false
     let materializations = 0

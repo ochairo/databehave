@@ -27,7 +27,7 @@
     "CHANGELOG.md"
   ],
   "engines": {
-    "node": "^24.0.0 || ^26.0.0"
+    "node": "^24.22.1 || ^26.12.1"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
@@ -50,9 +50,9 @@
   },
   "devDependencies": {
     "@databehave/schema": "workspace:*",
-    "@types/node": "^25.9.1",
-    "@vitest/coverage-v8": "3.2.6",
+    "@types/node": "^24.19.2",
+    "@vitest/coverage-v8": "4.1.12",
     "typescript": "^6.0.3",
-    "vitest": "^3.2.6"
+    "vitest": "^4.1.12"
   }
 }

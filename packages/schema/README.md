@@ -17,7 +17,7 @@ Most schema libraries describe what shape your data has. @databehave/schema desc
 
 ## Install
 
-The upcoming release requires Node.js 24 or 26; supported majors are 24 and 26.
+The upcoming release requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x); supported majors are 24 and 26.
 See the [workspace documentation](../../docs/index.md) and [runnable schema example](../../examples/schema.mjs).
 
 ```sh

@@ -3,7 +3,7 @@
 This is an intentional breaking API/configuration change. The previous JSONC assembly path and
 `createServer(config)` API are removed. Existing scenario files are not automatically rewritten.
 
-The upcoming release requires Node.js 24 or 26, with Node.js 24 and 26 in the supported test matrix.
+The upcoming release requires Node.js 24.22.1+ (24.x) or 26.12.1+ (26.x), with Node.js 24 and 26 in the supported test matrix.
 Upgrade applications using Node.js 18, 20 or 22 before migrating. See the [release guide](docs/releasing.md)
 for runtime support and the [plugin author guide](docs/plugins.md) for extension ownership and lifecycle.
 

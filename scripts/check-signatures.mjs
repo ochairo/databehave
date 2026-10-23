@@ -42,7 +42,7 @@ export async function checkSignatures(lock, runner = execute) {
       npm_config_userconfig: join(root, 'user.npmrc'), npm_config_globalconfig: join(root, 'global.npmrc'),
       npm_config_cache: join(root, 'cache'), npm_config_update_notifier: 'false',
     } }
-    assert.equal((await runner(['--version'], options)).trim(), '11.19.0', 'Use the pinned Node 24.21.0/npm 11.19.0 quality runtime')
+    assert.equal((await runner(['--version'], options)).trim(), '11.19.1', 'Use the pinned Node 24.22.1/npm 11.19.1 quality runtime')
     const output = await runner(['audit', 'signatures', '--registry=https://registry.npmjs.org'], options)
     assert.equal(Number(/audited (\d+) packages? in/.exec(output)?.[1]), packages.length, 'Incomplete signature coverage')
     return output

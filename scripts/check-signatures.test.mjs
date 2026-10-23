@@ -17,7 +17,7 @@ test('projects aliases, duplicate versions and platform alternatives as complete
     directory = options.cwd
     assert.equal(options.env.NODE_OPTIONS, undefined)
     assert.equal(options.env.npm_config_registry, undefined)
-    if (args[0] === '--version') return '11.19.0\n'
+    if (args[0] === '--version') return '11.19.1\n'
     assert.deepEqual(args, ['audit', 'signatures', '--registry=https://registry.npmjs.org'])
     const root = JSON.parse(await readFile(join(directory, 'package.json')))
     assert.equal(Object.keys(root.dependencies).length, 3)
@@ -45,7 +45,7 @@ test('propagates audit failures and incomplete coverage, cleans up after either'
     let directory
     await assert.rejects(checkSignatures(lock, (args, options) => {
       directory = options.cwd
-      if (args[0] === '--version') return '11.19.0'
+      if (args[0] === '--version') return '11.19.1'
       if (failure instanceof Error) throw failure
       return failure
     }))

@@ -164,8 +164,8 @@ test('bootstrap requires a token and propagates publishing failures without expo
 
 test('both supported runtimes test source and the exact release artifact', async () => {
   const ci = await workflow('ci')
-  assert.deepEqual(ci.jobs['build-test'].strategy.matrix.node, ['24', '26'])
-  assert.deepEqual(ci.jobs['package-consumers'].strategy.matrix.node, ['24', '26'])
+  assert.deepEqual(ci.jobs['build-test'].strategy.matrix.node, ['24.22.1', '26.12.1'])
+  assert.deepEqual(ci.jobs['package-consumers'].strategy.matrix.node, ['24.22.1', '26.12.1'])
   assert.equal(ci.jobs['package-consumers'].needs, 'quality')
   assert.match(JSON.stringify(ci.jobs['package-consumers'].steps), /needs\.quality\.outputs\.artifact-id/)
   const runs = ci.jobs.quality.steps.map((step) => step.run ?? '').join('\n')
@@ -177,7 +177,7 @@ test('both supported runtimes test source and the exact release artifact', async
   const paths = ['package.json', ...(await readdir('packages')).map((name) => `packages/${name}/package.json`)]
   for (const file of paths) {
     const manifest = JSON.parse(await readFile(file, 'utf8'))
-    assert.equal(manifest.engines.node, '^24.0.0 || ^26.0.0', file)
+    assert.equal(manifest.engines.node, '^24.22.1 || ^26.12.1', file)
     assert.equal(manifest.scripts.prepack, undefined, `${file}: packing must not rebuild tested bytes`)
     assert.equal(manifest.scripts.prepublishOnly, undefined, `${file}: publication must not run source hooks`)
   }
