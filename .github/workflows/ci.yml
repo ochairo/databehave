@@ -5,6 +5,11 @@ on:
     branches: [main]
   pull_request:
   workflow_call:
+    inputs:
+      release-preflight:
+        description: Check npm publication readiness for a planned release
+        type: boolean
+        default: false
     outputs:
       release-artifact-id:
         description: Exact verified release bundle from this run
@@ -94,12 +99,17 @@ jobs:
           path: test-results/
           retention-days: 7
           if-no-files-found: ignore
-      - name: Prepare and dry-run exact release tarballs
+      - name: Prepare and verify exact release tarballs
         env:
           SOURCE_REVISION: ${{ github.sha }}
         run: |
           pnpm release:prepare artifacts/release "$SOURCE_REVISION"
-          pnpm release:dry-run artifacts/release "$SOURCE_REVISION"
+          pnpm release:verify artifacts/release "$SOURCE_REVISION"
+      - name: Check npm publication readiness
+        if: ${{ inputs.release-preflight == true }}
+        env:
+          SOURCE_REVISION: ${{ github.sha }}
+        run: pnpm release:dry-run artifacts/release "$SOURCE_REVISION"
       - name: Upload immutable bundle
         id: bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

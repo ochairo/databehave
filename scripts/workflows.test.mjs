@@ -80,6 +80,7 @@ test('publishing is a same-revision CI-gated effect with no install/build', asyn
   const cd = await workflow('cd')
   assert.equal(cd.on.workflow_dispatch.inputs.dry_run.default, true)
   assert.equal(cd.jobs.verify.uses, './.github/workflows/ci.yml')
+  assert.deepEqual(cd.jobs.verify.with, { 'release-preflight': true })
   const publish = cd.jobs.publish
   assert.equal(publish.needs, 'verify')
   for (const guard of ["inputs.dry_run == false", "github.ref == 'refs/heads/main'", "github.repository == 'ochairo/databehave'"]) assert.ok(publish.if.includes(guard))
@@ -169,9 +170,9 @@ test('both supported runtimes test source and the exact release artifact', async
   assert.equal(ci.jobs['package-consumers'].needs, 'quality')
   assert.match(JSON.stringify(ci.jobs['package-consumers'].steps), /needs\.quality\.outputs\.artifact-id/)
   const runs = ci.jobs.quality.steps.map((step) => step.run ?? '').join('\n')
-  for (const gate of ['lint', 'signatures:check', 'api:check', 'docs:check', 'examples:check', 'workflow:check', 'test:e2e', 'release:prepare', 'release:dry-run']) assert.ok(runs.includes(`pnpm ${gate}`), gate)
+  for (const gate of ['lint', 'signatures:check', 'api:check', 'docs:check', 'examples:check', 'workflow:check', 'test:e2e', 'release:prepare', 'release:verify']) assert.ok(runs.includes(`pnpm ${gate}`), gate)
   assert.ok(runs.indexOf('pnpm build') < runs.indexOf('pnpm release:prepare'))
-  assert.ok(runs.indexOf('pnpm release:prepare') < runs.indexOf('pnpm release:dry-run'))
+  assert.ok(runs.indexOf('pnpm release:prepare') < runs.indexOf('pnpm release:verify'))
   assert.equal(ci.permissions['id-token'], undefined)
   for (const job of Object.values(ci.jobs)) assert.equal(job.permissions?.['id-token'], undefined)
   const paths = ['package.json', ...(await readdir('packages')).map((name) => `packages/${name}/package.json`)]
@@ -181,6 +182,46 @@ test('both supported runtimes test source and the exact release artifact', async
     assert.equal(manifest.scripts.prepack, undefined, `${file}: packing must not rebuild tested bytes`)
     assert.equal(manifest.scripts.prepublishOnly, undefined, `${file}: publication must not run source hooks`)
   }
+})
+
+test('ordinary CI verifies bundles while release callers opt into publication preflight', async () => {
+  const ci = await workflow('ci')
+  const input = ci.on.workflow_call.inputs['release-preflight']
+  assert.equal(input.type, 'boolean')
+  assert.equal(input.default, false)
+  assert.notEqual(input.required, true)
+  const steps = ci.jobs.quality.steps
+  const preparation = steps.findIndex(step => step.run?.includes('pnpm release:prepare'))
+  const preflight = steps.findIndex(step => step.run?.includes('pnpm release:dry-run'))
+  const upload = steps.findIndex(step => step.id === 'bundle')
+  assert.ok(preparation >= 0 && preparation < preflight && preflight < upload)
+  assert.equal(steps[preparation].if, undefined)
+  assert.equal(steps[preparation]['continue-on-error'], undefined)
+  assert.match(steps[preparation].run, /pnpm release:verify artifacts\/release "\$SOURCE_REVISION"/)
+  assert.equal(steps[preflight].if, '${{ inputs.release-preflight == true }}')
+  assert.equal(steps[preflight]['continue-on-error'], undefined)
+  assert.equal(steps[preflight].run, 'pnpm release:dry-run artifacts/release "$SOURCE_REVISION"')
+  assert.deepEqual(steps[preflight].env, { SOURCE_REVISION: '${{ github.sha }}' })
+  assert.equal(steps[upload].if, undefined, 'failed preparation or preflight must prevent upload')
+  for (const job of Object.values(ci.jobs)) {
+    assert.equal(job['continue-on-error'], undefined)
+    for (const step of job.steps) {
+      if (step === steps[preflight]) continue
+      assert.doesNotMatch(step.run ?? '', /release:dry-run|release\.mjs (?:dry-run|publish)|npm publish/)
+    }
+  }
+})
+
+test('Dependabot updates the shared workspace from its root and preserves the Node typings major', async () => {
+  const config = parse(await readFile('.github/dependabot.yml', 'utf8'))
+  const updates = config.updates.filter(update => update['package-ecosystem'] === 'npm')
+  assert.equal(updates.length, 1)
+  const [workspace] = updates
+  assert.equal(workspace.directory, '/')
+  assert.equal(workspace.directories, undefined)
+  assert.deepEqual(workspace.ignore, [{
+    'dependency-name': '@types/node', 'update-types': ['version-update:semver-major'],
+  }])
 })
 
 test('workflow jobs are bounded and external actions are immutable', async () => {

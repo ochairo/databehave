@@ -1,14 +1,17 @@
 version: 2
 
 updates:
-  # One update group owns the shared pnpm lockfile and all six packages.
+  # Discover all workspace packages from the root that owns the shared pnpm lockfile.
   - package-ecosystem: npm
-    directories:
-      - "/"
-      - "/packages/*"
+    directory: "/"
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
+    ignore:
+      # Typecheck against the oldest supported Node major, even when newer runtimes are supported.
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
     groups:
       dev-dependencies:
         dependency-type: development

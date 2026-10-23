@@ -23,6 +23,8 @@ concurrency:
 jobs:
   verify:
     uses: ./.github/workflows/ci.yml
+    with:
+      release-preflight: true
 
   publish:
     needs: verify

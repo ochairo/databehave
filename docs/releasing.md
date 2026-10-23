@@ -31,6 +31,12 @@ revision, package identities and dependency order, SHA-256 digests, SHA-512 inte
 Consumers on both supported Node versions verify and run those exact tarballs without installing workspace dependencies.
 They cover schema-only, HTTP-only, schema-free OpenAPI providers, full composition and CLI startup.
 
+Ordinary push and pull-request CI accepts package versions that are already published: it prepares and verifies the
+bundle without running npm publication preflight. The manual release workflow enables the reusable workflow's
+`release-preflight` input for both dry runs and real releases. This runs `npm publish --dry-run` on the exact tarballs
+before upload and fails when npm reports an existing version. Keep version availability checks in release preparation;
+do not bump versions solely to make ordinary CI pass.
+
 Package hooks do not rebuild during packing or publication. A checksum mismatch, unexpected file, unsafe archive path,
 link, changed metadata, wrong revision or incomplete package set fails verification before publication begins.
 SHA hashes detect changed bytes; the trusted producing workflow and exact same-run artifact identify their source.
@@ -69,12 +75,18 @@ pnpm test:e2e
 pnpm release:prepare artifacts/release "$SOURCE_REVISION"
 pnpm release:verify artifacts/release "$SOURCE_REVISION"
 pnpm pack:check artifacts/release "$SOURCE_REVISION"
-pnpm release:dry-run artifacts/release "$SOURCE_REVISION"
 ```
 
 Preparation requires an empty output directory and existing builds. It never overwrites a previous bundle. Keep an
 existing bundle until publication and recovery decisions are complete; use a new directory for another experiment.
+For a planned release with new package versions, also run:
+
+```sh
+pnpm release:dry-run artifacts/release "$SOURCE_REVISION"
+```
+
 Dry run executes npm's publish preparation on every exact tarball with lifecycle scripts disabled and no registry write.
+It reads registry metadata and can reject already-published versions, so it is not an offline package check.
 It cannot prove authentication, package ownership, environment protection, or a successful OIDC exchange.
 
 ## Operator prerequisites
@@ -119,7 +131,8 @@ and [npm CI/CD authentication](https://docs.npmjs.com/using-private-packages-in-
 ## Manual release
 
 Run [cd.yml](../.github/workflows/cd.yml) from the reviewed `main` revision with its default `dry_run: true` first.
-It invokes the same-revision reusable CI workflow and retains the validated bundle. Real publication requires an
+It invokes the same-revision reusable CI workflow with npm publication preflight enabled and retains the validated bundle.
+Existing package versions fail preflight without publication. Real publication requires an
 explicit dispatch with `dry_run: false`, `bootstrap: false` for OIDC, and any configured environment approval. It reruns the gates, then publishes
 that run's verified artifact; it does not reuse a previous dry run's artifact or rebuild inside the publisher.
 
@@ -151,6 +164,10 @@ with new versions where necessary and document its relationship to the partial r
 ## Updating delivery tools
 
 Dependabot owns pnpm workspace dependencies, SHA-pinned Actions and the digest-pinned development base image.
+Its npm entry targets only the workspace root, which owns the shared lockfile and member manifests. Node typings stay
+on the oldest supported runtime major; Dependabot can update their minor and patch versions but ignores major updates.
+When changing that baseline, update all Node typings declarations and the shared lockfile together. Existing member-only
+update PRs with stale lockfiles must be replaced or reconciled with the root workspace before merging.
 Update the Node release-toolchain pin and expected bundled npm version together after checking both versions.
 Update cdxgen's exact devDependency and lockfile together; preparation verifies the installed version.
 The [actionlint installer](../scripts/install-actionlint.mjs) pins the official release and both Linux binary checksums.
