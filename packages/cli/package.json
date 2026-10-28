@@ -39,7 +39,7 @@
     "@databehave/core": "workspace:^"
   },
   "devDependencies": {
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "@types/node": "24.19.2"
   },
   "publishConfig": {
