@@ -33,7 +33,7 @@
     "signatures:check": "node scripts/check-signatures.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.2",
+    "@biomejs/biome": "^2.6.3",
     "@cyclonedx/cdxgen": "12.9.0",
     "@microsoft/api-extractor": "^7.59.4",
     "@playwright/test": "1.64.1",
