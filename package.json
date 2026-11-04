@@ -33,9 +33,9 @@
     "signatures:check": "node scripts/check-signatures.mjs"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.2",
+    "@biomejs/biome": "^2.6.4",
     "@cyclonedx/cdxgen": "12.9.0",
-    "@microsoft/api-extractor": "^7.59.4",
+    "@microsoft/api-extractor": "^7.60.1",
     "@playwright/test": "1.64.1",
     "@types/node": "24.19.2",
     "github-slugger": "2.0.0",
